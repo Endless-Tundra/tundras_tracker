@@ -66,7 +66,7 @@ except:
     con.rollback()
 
 
-actresses = [('jessica alba', 'pomona', '1981'), ('sigourney weaver', 'new york', '1949'), ('angelina jolie', 'los angeles', '1975'), ('natalie portman', 'jerusalem', '1981'), ('rachel weiss', 'london', '1971'), ('scarlett johansson', 'new york', '1984' )]
+actresses = [('jessica alba', 'pomona', '1981', '1981'), ('sigourney weaver', 'new york', '1949jsdhf;dskjf;lkdsjf;lkdsjfl;ksdjf;lkdsjf;lsdkjf;lkdsj;lkdjf', '1981'), ('jessica alba', 'pomona', '1981', '1981')]
 
 
 ## GUI Start ##
@@ -75,6 +75,8 @@ class Tundras_Tracker():
     def __init__(self):
         # super(Tundras_Tracker, self).__init__()
         
+    ### Main Windows ###
+
         # Set Title, Size, and Window Postion
         main_window = gtk.Window(gtk.WINDOW_TOPLEVEL)
         main_window.set_title("Tundra's Tracker")
@@ -87,6 +89,8 @@ class Tundras_Tracker():
 
 
 
+    ### Load Section ###
+
         # Full Load Button
         full_load_btn = gtk.Button("Full Load")
         full_load_btn.set_size_request(90,25)
@@ -96,33 +100,195 @@ class Tundras_Tracker():
         full_load_btn.connect("clicked", self.full_load_btn)
 
 
-
         # Partial Load Button (Refresh)
         refresh_btn = gtk.Button("Refresh")
         refresh_btn.set_size_request(90,25)
         refresh_btn.set_tooltip_text("Check for new Subscriptions and Donations")
 
-
         refresh_btn.connect("clicked", self.refresh_btn)
 
-        button6 = gtk.Button(label="Button 6")
 
-        main_grid = gtk.Table(8, 8, False)
+        # Load Button Frame #
 
-        main_grid.set_col_spacing(0, 20)
+        # Format Label
+        load_label = gtk.Label()
+        load_label.set_markup('<span size="20000"><b>Load</b></span>')
+        load_label.set_use_markup(True)
 
-        main_grid.attach(refresh_btn, 0, 1, 0, 1)
-        main_grid.attach(full_load_btn, 0, 1, 8, 9)
+        # Create Frame
+        load_frame = gtk.Frame()
+        load_frame.set_label_widget(load_label)
+        load_frame.set_label_align(0.5, 0.5)
+        load_vbox = gtk.VButtonBox()
+        load_vbox.set_border_width(10)
+        load_frame.add(load_vbox)
+
+
+        # Set the Appearance of the Button Box
+        load_vbox.set_layout(gtk.BUTTONBOX_START)
+        load_vbox.set_spacing(450)
+
+        # Add the Buttons #
+        load_vbox.add(refresh_btn)
+        load_vbox.add(full_load_btn)
+        
+        # Horizontal Box inside Vertical Box for Sizing Purposes #
+        load_hbox = gtk.HBox(False, 0)
+        load_hbox.set_border_width(0)
+
+        load_hbox.pack_start(load_frame, True, True, 0)
         
 
 
 
-        # fixed = gtk.Fixed()
+    ### Donation Section ###
 
-        # fixed.put(full_load_btn, 20, 520)
-        # fixed.put(refresh_btn, 20, 20)
+        # Clear Recent Donor Button
+        don1_clear_btn = gtk.Button('Clear')
 
-        main_window.add(main_grid)
+
+        # Most Recent Donor List #
+
+        # Make scrolling window 
+        don1_list = gtk.ScrolledWindow()
+        don1_list.set_size_request(490,100)
+        don1_list.set_shadow_type(gtk.SHADOW_ETCHED_IN)
+        don1_list.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
+
+        store = self.create_model()
+
+        # Make a TreeView
+        don1_tree = gtk.TreeView(store)
+        don1_tree.set_rules_hint(True)
+        don1_tree.columns_autosize()
+        # don_tree.set_grid_lines(gtk.TREE_VIEW_GRID_LINES_BOTH)
+        self.create_columns(don1_tree)
+
+        # Add don1_tree to the Scrolling Window
+        don1_list.add(don1_tree)
+
+        # Most Recent Donor Frame #
+
+        # Format Label
+        don1_label = gtk.Label()
+        don1_label.set_markup('<span size="15000"><b>Most Recent Donor</b></span>')
+        don1_label.set_use_markup(True)
+
+        # Create Frame
+        don1_frame = gtk.Frame()
+        don1_frame.set_label_widget(don1_label)
+        don1_frame.set_label_align(0.1, 0.5)
+        don1_vbox = gtk.VBox(False, 8)
+        don1_vbox.set_border_width(10)
+        don1_frame.add(don1_vbox)
+        don1_vbox.add(don1_clear_btn)
+        don1_vbox.add(don1_list)
+
+
+        don1_hbox = gtk.HBox(False, 8)
+        don1_hbox.set_border_width(0)
+        don1_hbox.pack_start(don1_frame, True, True, 0)
+
+
+
+
+        # Last 10 Donors List
+
+        # Make scrolling window 
+        don10_list = gtk.ScrolledWindow()
+        don10_list.set_size_request(490,300)
+        don10_list.set_shadow_type(gtk.SHADOW_ETCHED_IN)
+        don10_list.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
+
+        store = self.create_model()
+
+        # Make a TreeView
+        don10_tree = gtk.TreeView(store)
+        don10_tree.set_rules_hint(True)
+        don10_tree.columns_autosize()
+        # don_tree.set_grid_lines(gtk.TREE_VIEW_GRID_LINES_BOTH)
+        self.create_columns(don10_tree)
+
+        # Add don_tree to the Scrolling Window
+        don10_list.add(don10_tree)
+
+        # Last 10 Donors Frame #
+
+        # Format Label
+        don10_label = gtk.Label()
+        don10_label.set_markup('<span size="15000"><b>Last 10 Donors</b></span>')
+        don10_label.set_use_markup(True)
+
+        # Create Frame
+        don10_frame = gtk.Frame()
+        don10_frame.set_label_widget(don10_label)
+        don10_frame.set_label_align(0.1, 0.5)
+        don10_vbox = gtk.VBox(False, 8)
+        don10_vbox.set_border_width(10)
+        don10_frame.add(don10_vbox)
+        don10_vbox.add(don10_list)
+        
+
+        don10_hbox = gtk.HBox(False, 8)
+        don10_hbox.set_border_width(0)
+        don10_hbox.pack_start(don10_frame, True, True, 0)
+
+
+
+        # Donation Frame # 
+        
+        # Format Label
+        don_label = gtk.Label()
+        don_label.set_markup('<span size="20000"><b>Donations</b></span>')
+        don_label.set_use_markup(True)
+
+        # Create Frame
+        don_frame = gtk.Frame()
+        don_frame.set_label_widget(don_label)
+        don_frame.set_label_align(0.5, 0.5)
+        don_vbox = gtk.VBox(False, 8)
+        don_vbox.set_border_width(10)
+        don_frame.add(don_vbox)
+
+        # Set Spacking between widgets
+        don_vbox.set_spacing(50)
+        
+        # Add Clear Button and TreeLists to Box
+        don_vbox.add(don1_hbox)
+        don_vbox.add(don10_hbox)
+        
+
+        # # We add a status bar that doesn't show up to prevent the list from being highlighted by default (No idea why this works)
+        # self.statusbar = gtk.Statusbar()
+        # don_vbox.add(self.statusbar)
+
+
+        # Horizontal Box inside Vertical Box for Sizing Purposes #
+        don_hbox = gtk.HBox(False, 8)
+        don_hbox.set_border_width(0)
+        don_hbox.pack_start(don_frame, True, True, 0)
+
+
+
+
+
+
+        # Create a colored border
+        # button = gtk.Button("Click me")
+        # button.set_border_width(50)
+        # eb = gtk.EventBox()
+        # eb.modify_bg(gtk.STATE_NORMAL, gtk.gdk.color_parse("gray"))
+        # eb.add(button)
+
+        # Create Fixed Container so you can position all the frames where you want them #
+        fixed = gtk.Fixed()
+        fixed.put(load_hbox, 25, 10)
+        fixed.put(don_hbox, 200, 10)
+
+        # Add everything to the main window
+
+        refresh_btn.grab_default()
+        main_window.add(fixed)
         main_window.show_all()
 
 
@@ -130,11 +296,24 @@ class Tundras_Tracker():
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
    
-
-
-
-
 
 
 
@@ -247,6 +426,48 @@ class Tundras_Tracker():
         con.commit()
 
 
+
+    ## Donation Lists ##
+    def create_model(self):
+        cur.execute("SELECT * FROM donations ORDER BY date desc, time desc limit 10")
+        rows = cur.fetchall()
+
+        store = gtk.ListStore(str, str, str, str)
+
+        rownumber = 0
+
+        while rownumber != 10:
+            amount = rows[rownumber][2]
+            amount = '%.2f' % amount
+            store.append([rows[rownumber][0], amount, rows[rownumber][3], rows[rownumber][0]])
+            rownumber = rownumber + 1
+        
+        return store
+
+
+    def create_columns(self, treeView):
+    
+        rendererText = gtk.CellRendererText()
+        column = gtk.TreeViewColumn("User Name", rendererText, text=0)
+        column.set_sort_column_id(0)    
+        treeView.append_column(column)
+        
+        rendererText = gtk.CellRendererText()
+        column = gtk.TreeViewColumn("Amount", rendererText, text=1)
+        column.set_sort_column_id(1)
+        treeView.append_column(column)
+
+        rendererText = gtk.CellRendererText()
+        rendererText.props.wrap_width = 240
+        rendererText.props.wrap_mode = gtk.WRAP_WORD
+        column = gtk.TreeViewColumn("Donation Comment", rendererText, text=2)
+        column.set_sort_column_id(2)
+        treeView.append_column(column)
+
+        rendererText = gtk.CellRendererText()
+        column = gtk.TreeViewColumn("Total", rendererText, text=3)
+        column.set_sort_column_id(3)
+        treeView.append_column(column)
 
 
 Tundras_Tracker()
