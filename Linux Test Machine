@@ -1,0 +1,30 @@
+Linux Test Machine:
+Username: wturner
+Password: temp
+
+Postgres root password = temp
+
+Twitch Authentication Link:
+
+https://api.twitch.tv/kraken/oauth2/authorize?response_type=token&client_id=bee7enfdt4km8c727l7cnqyctuylc5v&redirect_uri=http://localhost&scope=user_read+channel_read+channel_subscriptions
+
+
+
+EndlessTundra Twitch:
+
+Twitch Client ID:
+bee7enfdt4km8c727l7cnqyctuylc5v
+
+Client Secret:
+lbeg6h19po4n1scgrov6wesgmcivazm
+
+
+
+Carci Link:
+
+Twitch Access Token: bdwzb47jld9n6crvh0atguojumynz2
+
+Streamtip:
+API Client ID: 53740522849e6c95049f983d
+
+API Access Token: OTIzYmUyOTE3MmEwZmE2YzEzMjI0Mzhl
