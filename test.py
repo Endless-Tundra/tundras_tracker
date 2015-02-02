@@ -13,6 +13,10 @@ import re
 import logging
 import gtk
 
+## Set Global Variables ##
+old_record = ''
+clear_status = 0
+
 ## Congfig File ##
 configParser = ConfigParser.RawConfigParser()   
 configFilePath = r'/Users/wturner/Documents/git/tundras_tracker/twitch_tracker.conf'
@@ -24,9 +28,32 @@ log_level = configParser.get('logging', 'log_level')
 logging.basicConfig(filename=log_file,level=log_level)
 logging.warning('Creating log file')
 
-# Get Credentials From Config File #
+## Enable/Disable Full Load Button ##
+full_load_btn_status = configParser.get('full_load', 'allow')
+
+# Change to Boolean
+if full_load_btn_status == "True":
+    full_load_btn_status = True
+if full_load_btn_status == "False":
+    full_load_btn_status = False
+
+## Refresh Rate ##
+update_interval = configParser.get('update_interval', 'update_interval')
+
+# Turn milliseconds to seconds
+update_interval = int(update_interval) * 1000
+
+
+## StreamTip Access Tokens ##
 streamtip_client_id = configParser.get('streamtip', 'streamtip_client_id')
 streamtip_access_token = configParser.get('streamtip', 'streamtip_access_token')
+
+## Get OAuth Token and Twitch Username from the Config File ##
+twitch_username = configParser.get('twitch', 'twitch_username')
+twitch_oauth_token = configParser.get('twitch', 'twitch_oauth_token')
+
+
+
 
 ## Connect to the DB
 db_name = configParser.get('database', 'db_name')
@@ -38,7 +65,7 @@ con = None
 con = psycopg2.connect("dbname='%s' user='%s' host='%s' password='%s'" % (db_name, db_user, db_server, db_password))
 cur = con.cursor()
 
-
+        
 ### Check if all Necessary Tables Exist ###
 
 try:
@@ -66,7 +93,6 @@ except:
     con.rollback()
 
 
-actresses = [('jessica alba', 'pomona', '1981', '1981'), ('sigourney weaver', 'new york', '1949jsdhf;dskjf;lkdsjf;lkdsjfl;ksdjf;lkdsjf;lsdkjf;lkdsj;lkdjf', '1981'), ('jessica alba', 'pomona', '1981', '1981')]
 
 
 ## GUI Start ##
@@ -80,11 +106,12 @@ class Tundras_Tracker():
         # Set Title, Size, and Window Postion
         main_window = gtk.Window(gtk.WINDOW_TOPLEVEL)
         main_window.set_title("Tundra's Tracker")
-        main_window.set_size_request(1000, 600)
+        main_window.set_size_request(1300, 650)
         main_window.set_position(gtk.WIN_POS_MOUSE)
         main_window.set_border_width(0)
 
         main_window.connect("destroy", gtk.main_quit)
+
 
 
 
@@ -95,9 +122,11 @@ class Tundras_Tracker():
         full_load_btn = gtk.Button("Full Load")
         full_load_btn.set_size_request(90,25)
         full_load_btn.set_tooltip_text("Perform a full load of all records.  Must be enabled in the config file.")
-        full_load_btn.set_sensitive(False)
+        full_load_btn.set_sensitive(full_load_btn_status)
 
         full_load_btn.connect("clicked", self.full_load_btn)
+        full_load_btn.connect("clicked", self.on_refresh)
+
 
 
         # Partial Load Button (Refresh)
@@ -106,6 +135,7 @@ class Tundras_Tracker():
         refresh_btn.set_tooltip_text("Check for new Subscriptions and Donations")
 
         refresh_btn.connect("clicked", self.refresh_btn)
+        refresh_btn.connect("clicked", self.on_refresh)
 
 
         # Load Button Frame #
@@ -126,7 +156,7 @@ class Tundras_Tracker():
 
         # Set the Appearance of the Button Box
         load_vbox.set_layout(gtk.BUTTONBOX_START)
-        load_vbox.set_spacing(450)
+        load_vbox.set_spacing(20)
 
         # Add the Buttons #
         load_vbox.add(refresh_btn)
@@ -145,27 +175,29 @@ class Tundras_Tracker():
 
         # Clear Recent Donor Button
         don1_clear_btn = gtk.Button('Clear')
-
+        don1_clear_btn.connect("clicked", self.clear_recent_donor_list)
 
         # Most Recent Donor List #
 
         # Make scrolling window 
         don1_list = gtk.ScrolledWindow()
-        don1_list.set_size_request(490,100)
+        don1_list.set_size_request(490,80)
         don1_list.set_shadow_type(gtk.SHADOW_ETCHED_IN)
         don1_list.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
 
-        store = self.create_model()
+        self.donstore1 = self.create_recent_donor_list()
+        self.fill_recent_donor_store()
 
         # Make a TreeView
-        don1_tree = gtk.TreeView(store)
+        don1_tree = gtk.TreeView(self.donstore1)
         don1_tree.set_rules_hint(True)
         don1_tree.columns_autosize()
-        # don_tree.set_grid_lines(gtk.TREE_VIEW_GRID_LINES_BOTH)
-        self.create_columns(don1_tree)
+        don1_tree.set_grid_lines(gtk.TREE_VIEW_GRID_LINES_VERTICAL)
+        self.create_donation_columns(don1_tree)
 
         # Add don1_tree to the Scrolling Window
         don1_list.add(don1_tree)
+
 
         # Most Recent Donor Frame #
 
@@ -196,18 +228,19 @@ class Tundras_Tracker():
 
         # Make scrolling window 
         don10_list = gtk.ScrolledWindow()
-        don10_list.set_size_request(490,300)
+        don10_list.set_size_request(490,350)
         don10_list.set_shadow_type(gtk.SHADOW_ETCHED_IN)
         don10_list.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
 
-        store = self.create_model()
+        self.donstore10 = self.create_last_10_donor_list()
+        self.fill_last_10_donor_store()
 
         # Make a TreeView
-        don10_tree = gtk.TreeView(store)
+        don10_tree = gtk.TreeView(self.donstore10)
         don10_tree.set_rules_hint(True)
         don10_tree.columns_autosize()
-        # don_tree.set_grid_lines(gtk.TREE_VIEW_GRID_LINES_BOTH)
-        self.create_columns(don10_tree)
+        don10_tree.set_grid_lines(gtk.TREE_VIEW_GRID_LINES_VERTICAL)
+        self.create_donation_columns(don10_tree)
 
         # Add don_tree to the Scrolling Window
         don10_list.add(don10_tree)
@@ -251,7 +284,7 @@ class Tundras_Tracker():
         don_frame.add(don_vbox)
 
         # Set Spacking between widgets
-        don_vbox.set_spacing(50)
+        don_vbox.set_spacing(40)
         
         # Add Clear Button and TreeLists to Box
         don_vbox.add(don1_hbox)
@@ -283,7 +316,7 @@ class Tundras_Tracker():
         # Create Fixed Container so you can position all the frames where you want them #
         fixed = gtk.Fixed()
         fixed.put(load_hbox, 25, 10)
-        fixed.put(don_hbox, 200, 10)
+        fixed.put(don_hbox, 170, 10)
 
         # Add everything to the main window
 
@@ -291,23 +324,9 @@ class Tundras_Tracker():
         main_window.add(fixed)
         main_window.show_all()
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        ## Refresh Every 10 Seconds ###
+        gtk.timeout_add(update_interval, self.refresh_btn, self)
+        gtk.timeout_add(update_interval, self.on_refresh, self)
 
 
 
@@ -318,7 +337,7 @@ class Tundras_Tracker():
 
 
 
-## Funcations ##
+## Functions ##
     ## Full Load Button ##
     def full_load_btn(self, widget):
         ### Payment Processing ###
@@ -374,6 +393,8 @@ class Tundras_Tracker():
 
 
 
+
+
     ## Refresh Button ##
     def refresh_btn(self, widget):
         ####### Incremental Update of Donations (This can only get a maximum of 100 donations) #######
@@ -420,32 +441,101 @@ class Tundras_Tracker():
                 # Need to write to a log file here
                 logging.exception('\n\nUnknown Exception (This transaction was not loaded into the DB):\n')
                 error_info = '\n\nTransaction Info\nUsername: ' + item['username'] + '\nAmount: ' + item['amount'] + '\nNote: ' + item['note'] + '\nTransation_Id: ' + item['transactionId'] + '\nDate: ' + date + '\nTime: ' + time + '\n'
-            logging.error(error_info)
+                logging.error(error_info)
 
         ## Pushes Changes to DB ##
         con.commit()
 
+        return True
 
 
     ## Donation Lists ##
-    def create_model(self):
-        cur.execute("SELECT * FROM donations ORDER BY date desc, time desc limit 10")
-        rows = cur.fetchall()
 
-        store = gtk.ListStore(str, str, str, str)
+    # Clear Most Recent Donor Button
+    def clear_recent_donor_list(self, widget):
+        self.donstore1.clear()
+        global clear_status
+        clear_status = 1
+        return self.donstore1
 
-        rownumber = 0
 
-        while rownumber != 10:
-            amount = rows[rownumber][2]
+    def create_recent_donor_list(self):
+        self.donstore1 = gtk.ListStore(str, str, str, str)
+        return self.donstore1
+
+
+    def fill_recent_donor_store(self):
+        self.donstore1.clear()
+        global old_record
+        global clear_status
+
+        try:
+            cur.execute("SELECT * FROM donations ORDER BY date desc, time desc limit 1")
+            rows = cur.fetchall()
+
+            amount = rows[0][2]
             amount = '%.2f' % amount
-            store.append([rows[rownumber][0], amount, rows[rownumber][3], rows[rownumber][0]])
-            rownumber = rownumber + 1
+            transactionid = rows[0][4]
+
+            if transactionid != old_record:
+                self.donstore1.append([rows[0][0], amount, rows[0][3], rows[0][0]])
+                old_record = rows[0][4]
+                clear_status = 0
+                return self.donstore1
+
+            elif clear_status == 0:
+                self.donstore1.append([rows[0][0], amount, rows[0][3], rows[0][0]])
+                return self.donstore1
+
+            else:
+                return False
+                     
+        except IndexError:
+            old_record = rows[0][4]
+            self.donstore1.append(['None', 'None', 'None', 'None'])
+            return self.donstore1
+
+        except UnboundLocalError:
+            old_record = rows[0][4]
+            self.donstore1.append(['None', 'None', 'None', 'None'])
+            return self.donstore1
         
-        return store
 
 
-    def create_columns(self, treeView):
+
+    def create_last_10_donor_list(self):
+        self.donstore10 = gtk.ListStore(str, str, str, str)
+        return self.donstore10
+
+    def fill_last_10_donor_store(self):
+        self.donstore10.clear()
+
+        try:
+            cur.execute("SELECT * FROM donations ORDER BY date desc, time desc limit 10")
+            rows = cur.fetchall()
+
+            rownumber = 0
+
+            while rownumber != 10:
+                amount = rows[rownumber][2]
+                amount = '%.2f' % amount
+                self.donstore10.append([rows[rownumber][0], amount, rows[rownumber][3], rows[rownumber][0]])
+                rownumber = rownumber + 1
+        
+        except IndexError:
+            self.donstore10.append(['None', 'None', 'None', 'None'])
+
+        return self.donstore10
+
+
+
+    def on_refresh(self, widget):
+        self.fill_recent_donor_store()
+        self.fill_last_10_donor_store()
+        return True
+        
+
+    def create_donation_columns(self, treeView):
     
         rendererText = gtk.CellRendererText()
         column = gtk.TreeViewColumn("User Name", rendererText, text=0)
@@ -468,6 +558,8 @@ class Tundras_Tracker():
         column = gtk.TreeViewColumn("Total", rendererText, text=3)
         column.set_sort_column_id(3)
         treeView.append_column(column)
+
+
 
 
 Tundras_Tracker()
