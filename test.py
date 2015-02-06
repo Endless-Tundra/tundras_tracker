@@ -13,6 +13,10 @@ import re
 import logging
 import gtk
 import time
+import gobject
+import glib
+import threading
+
 
 
 ## Set Global Variables ##
@@ -21,6 +25,8 @@ don_old_record = 0
 sub_old_record = 0
 don_clear_status = 0
 sub_clear_status = 0
+update_running = 0
+
 
 ## Congfig File ##
 configParser = ConfigParser.RawConfigParser()   
@@ -44,9 +50,11 @@ if reload_sub_btn_status == "False":
 
 ## Refresh Rate ##
 update_interval = configParser.get('update_interval', 'update_interval')
+stat_update_interval = configParser.get('update_interval', 'stat_update_interval')
 
 # Turn milliseconds to seconds
 update_interval = int(update_interval) * 1000
+stat_update_interval = int(stat_update_interval) * 1000
 
 ## Subscriber Count Max ##
 sub_offset = configParser.get('sub_offset', 'sub_offset')
@@ -107,6 +115,14 @@ except:
     print "Session Stats Table Already Exists"
     con.rollback()
 
+try:
+    cur.execute("CREATE TABLE lost_subscribers(Username varchar(100), Date_Subscribed date DEFAULT CURRENT_DATE NOT NULL, Date_Lost date DEFAULT CURRENT_DATE NOT NULL, Time time DEFAULT CURRENT_TIME NOT NULL)")
+    con.commit()
+except:
+    ## Rollback if create table command fails ##
+    print "Lost Subscribers Table Already Exists"
+    con.rollback()
+
 
 # f = open('workfile', 'w')
 
@@ -138,11 +154,11 @@ class Tundras_Tracker():
         refresh_btn.set_size_request(90,25)
         refresh_btn.set_tooltip_text("Check for new Subscriptions and Donations")
 
-        refresh_btn.connect("clicked", self.refresh_btn)
-        refresh_btn.connect("clicked", self.on_refresh)
-        refresh_btn.connect("clicked", self.get_current_sub_count)
-        refresh_btn.connect("clicked", self.get_current_follow_count)
-        refresh_btn.connect("clicked", self.get_current_viewers_count)
+        # refresh_btn.connect("clicked", self.refresh_btn)
+        refresh_btn.connect("clicked", self.check_for_updates_thread)
+        refresh_btn.connect("clicked", self.listfill_thread)
+        refresh_btn.connect("clicked", self.stats_thread)
+
 
         # Reload all Subscribers Button
         reload_sub_btn = gtk.Button("Reload Subscribers")
@@ -151,7 +167,7 @@ class Tundras_Tracker():
         reload_sub_btn.set_sensitive(reload_sub_btn_status)
 
         reload_sub_btn.connect("clicked", self.reload_sub_btn)
-        reload_sub_btn.connect("clicked", self.on_refresh)
+        reload_sub_btn.connect("clicked", self.listfill_thread)
         reload_sub_btn.connect("clicked", self.get_current_sub_count)
 
 
@@ -312,11 +328,11 @@ class Tundras_Tracker():
         don1_list.set_shadow_type(gtk.SHADOW_ETCHED_IN)
         don1_list.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
 
-        self.donstore1 = self.create_recent_donor_list()
-        self.fill_recent_donor_store()
+        self.donlist1 = self.create_recent_donor_list()
+        self.fill_recent_donor_list()
 
         # Make a TreeView
-        don1_tree = gtk.TreeView(self.donstore1)
+        don1_tree = gtk.TreeView(self.donlist1)
         don1_tree.set_rules_hint(True)
         don1_tree.columns_autosize()
         don1_tree.set_grid_lines(gtk.TREE_VIEW_GRID_LINES_VERTICAL)
@@ -359,11 +375,11 @@ class Tundras_Tracker():
         don10_list.set_shadow_type(gtk.SHADOW_ETCHED_IN)
         don10_list.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
 
-        self.donstore10 = self.create_last_10_donor_list()
-        self.fill_last_10_donor_store()
+        self.donlist10 = self.create_last_10_donor_list()
+        self.fill_last_10_donor_list()
 
         # Make a TreeView
-        don10_tree = gtk.TreeView(self.donstore10)
+        don10_tree = gtk.TreeView(self.donlist10)
         don10_tree.set_rules_hint(True)
         don10_tree.columns_autosize()
         don10_tree.set_grid_lines(gtk.TREE_VIEW_GRID_LINES_VERTICAL)
@@ -447,11 +463,11 @@ class Tundras_Tracker():
         sub1_list.set_shadow_type(gtk.SHADOW_ETCHED_IN)
         sub1_list.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
 
-        self.substore1 = self.create_recent_sub_list()
-        self.fill_recent_sub_store()
+        self.sublist1 = self.create_recent_sub_list()
+        self.fill_recent_sub_list()
 
         # Make a TreeView
-        sub1_tree = gtk.TreeView(self.substore1)
+        sub1_tree = gtk.TreeView(self.sublist1)
         sub1_tree.set_rules_hint(True)
         sub1_tree.columns_autosize()
         sub1_tree.set_grid_lines(gtk.TREE_VIEW_GRID_LINES_VERTICAL)
@@ -494,11 +510,11 @@ class Tundras_Tracker():
         sub10_list.set_shadow_type(gtk.SHADOW_ETCHED_IN)
         sub10_list.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
 
-        self.substore10 = self.create_last_10_sub_list()
-        self.fill_last_10_sub_store()
+        self.sublist10 = self.create_last_10_sub_list()
+        self.fill_last_10_sub_list()
 
         # Make a TreeView
-        sub10_tree = gtk.TreeView(self.substore10)
+        sub10_tree = gtk.TreeView(self.sublist10)
         sub10_tree.set_rules_hint(True)
         sub10_tree.columns_autosize()
         sub10_tree.set_grid_lines(gtk.TREE_VIEW_GRID_LINES_VERTICAL)
@@ -592,13 +608,15 @@ class Tundras_Tracker():
         main_window.show_all()
 
         ## Refresh Every X Seconds (Set in Config File) ###
-        gtk.timeout_add(update_interval, self.refresh_btn, self)
-        gtk.timeout_add(update_interval, self.on_refresh, self)
+        gtk.timeout_add(update_interval, self.check_for_updates_thread, self)
+        gtk.timeout_add(update_interval, self.listfill_run)
 
-        ## Refresh Current Subscription Value Every 10 Minutes ##
-        gtk.timeout_add(600000, self.get_current_sub_count, self)
-        gtk.timeout_add(update_interval, self.get_current_follow_count, self)
-        gtk.timeout_add(update_interval, self.get_current_viewers_count, self)
+        ## Refresh Current Stats ##
+        gtk.timeout_add(stat_update_interval, self.stats_thread, self)
+
+        # gtk.timeout_add(600000, self.get_current_sub_count, self)
+        # gtk.timeout_add(update_interval, self.get_current_follow_count, self)
+        # gtk.timeout_add(update_interval, self.get_current_viewers_count, self)
 
 
 
@@ -611,8 +629,106 @@ class Tundras_Tracker():
 
 ## Functions ##
 
-    ## Refresh Button ##
-    def refresh_btn(self, widget):
+###### Threads ######
+    def check_for_updates_thread(self, widget):
+        check_for_updates_thread = threading.Thread(target=self.check_for_updates)
+        check_for_updates_thread.daemon = True
+        check_for_updates_thread.start()
+        return True
+
+
+    def stats_thread(self, widget):
+        substat_thread = threading.Thread(target=self.stats_run)
+        substat_thread.daemon = True
+        substat_thread.start()
+        return True
+
+
+###### Don't use this, it just crashes (I have no idea why) ######
+    def listfill_thread(self, widget):
+        listfill_thread = threading.Thread(target=self.listfill_run)
+        listfill_thread.daemon = True
+        listfill_thread.start()
+        return True
+
+
+###### Run Commands ######
+    def listfill_run(self):
+        self.fill_recent_donor_list()
+        self.fill_last_10_donor_list()
+        self.fill_recent_sub_list()
+        self.fill_last_10_sub_list()
+        return True
+
+
+    def stats_run(self):
+        self.get_current_sub_count(self)
+        self.get_current_follow_count()
+        self.get_current_viewers_count()
+
+
+
+###### Functions that actually do things ######
+
+    ## Update Current Sub Count ##
+    def get_current_sub_count(self, widget):
+        try:
+            twitch_sub_count_api_url = 'https://api.twitch.tv/kraken/channels/' + twitch_username + '/subscriptions?direction=desc&limit=1&offset=0&oauth_token=' + twitch_oauth_token
+            twitch_sub_count = json.load(urllib2.urlopen(twitch_sub_count_api_url))
+            self.sub_current.set_markup('<span size="18000">' + str(twitch_sub_count['_total']) + '</span>')
+        except urllib2.HTTPError:
+             self.sub_current.set_markup('<span size="18000">Twitch :(</span>')
+
+        self.sub_current.set_use_markup(True)
+        print "Sub Stats Updated"
+        return True
+
+
+    ## Update Current Followers Count ##
+    def get_current_follow_count(self):
+        try:
+            twitch_follow_count_api_url = 'https://api.twitch.tv/kraken/channels/' + twitch_username + '/follows?limit=1&offset=0'
+            twitch_follow_count = json.load(urllib2.urlopen(twitch_follow_count_api_url))
+            if int(twitch_follow_count['_total']) == 0:
+                return True    
+            else:
+                self.follow_current.set_text('<span size="18000">' + str(twitch_follow_count['_total']) + '</span>')
+        except urllib2.HTTPError:
+             self.follow_current.set_markup('<span size="18000">Twitch :(</span>')
+
+        self.follow_current.set_use_markup(True)
+        print "Followers Updated"
+        return True
+
+
+    ## Update Current Viewer Count ##
+    def get_current_viewers_count(self):
+        twitch_viewers_count_api_url = 'https://api.twitch.tv/kraken/streams/' + twitch_username
+        twitch_viewers_count = json.load(urllib2.urlopen(twitch_viewers_count_api_url))
+        try:
+            self.viewers_current.set_markup('<span size="18000">' + str(twitch_viewers_count['stream']['viewers']) + '</span>')
+        except urllib2.HTTPError:
+             self.follow_current.set_markup('<span size="18000">Twitch :(</span>')
+        except:
+            self.viewers_current.set_markup('<span size="14000">Not Streaming</span>')
+
+        self.viewers_current.set_use_markup(True)
+        print "Viewers Updated"
+        return True
+
+
+
+    ## Check For Updates (Refresh Button) ##
+    def check_for_updates(self):
+        global update_running
+        if update_running == 1:
+            print "already running"
+            return False
+        print update_running
+        update_running = 1
+        check_for_updates_con = None
+        check_for_updates_con = psycopg2.connect("dbname='%s' user='%s' host='%s' password='%s'" % (db_name, db_user, db_server, db_password))
+        check_for_updates_cur = check_for_updates_con.cursor()
 
         # Update Donations #
         offset = 0
@@ -622,8 +738,8 @@ class Tundras_Tracker():
         streamtip_api_url = 'https://streamtip.com/api/tips?direction=desc&sort_by=date&limit=100&offset=' + str(offset) + '&client_id=' + streamtip_client_id + '&access_token=' + streamtip_access_token
         streamtip_donations = json.load(urllib2.urlopen(streamtip_api_url))
 
-        cur.execute("SELECT Transaction_Id FROM donations ORDER BY date desc, time desc limit 1")
-        rows = cur.fetchall()
+        check_for_updates_cur.execute("SELECT Transaction_Id FROM donations ORDER BY date desc, time desc limit 1")
+        rows = check_for_updates_cur.fetchall()
         try:
             don_old_record = rows[0][0]
         except IndexError:
@@ -650,13 +766,13 @@ class Tundras_Tracker():
                 # Replace none ASCI II Characters with a [?]
                 note = re.sub(r'[^\x00-\x7F]+','[?]', note)
                 try:
-                    cur.execute("INSERT INTO donations (Username, Amount, Message, Transaction_Id, Date, Time) VALUES ('%s',%f,'%s','%s','%s','%s')" % (item['username'], float(item['amount']), note, item['transactionId'], date, time))
+                    check_for_updates_cur.execute("INSERT INTO donations (Username, Amount, Message, Transaction_Id, Date, Time) VALUES ('%s',%f,'%s','%s','%s','%s')" % (item['username'], float(item['amount']), note, item['transactionId'], date, time))
                 except UnicodeDecodeError:
                     logging.exception('\n\nUnicode Exception (This transaction was loaded into the DB but the note was removed):\n')
                     error_info = '\n\nTransaction Info\nUsername: ' + item['username'] + '\nAmount: ' + item['amount'] + '\nNote: ' + item['note'] + '\nTransation_Id: ' + item['transactionId'] + '\nDate: ' + date + '\nTime: ' + time + '\n'
                     logging.error(error_info)
                     note = 'Sorry something about the message caused an error so it couldnt be saved :(  But Carci still loves you!'
-                    cur.execute("INSERT INTO donations (Username, Amount, Message, Transaction_Id, Date, Time) VALUES ('%s',%f,'%s','%s','%s','%s')" % (item['username'], float(item['amount']), note, item['transactionId'], date, time))
+                    check_for_updates_cur.execute("INSERT INTO donations (Username, Amount, Message, Transaction_Id, Date, Time) VALUES ('%s',%f,'%s','%s','%s','%s')" % (item['username'], float(item['amount']), note, item['transactionId'], date, time))
                 except:
                     # Need to write to a log file here
                     logging.exception('\n\nUnknown Exception (This transaction was not loaded into the DB):\n')
@@ -665,14 +781,14 @@ class Tundras_Tracker():
             offset = offset + 100
 
         ## Pushes Changes to DB ##
-        con.commit()
+        check_for_updates_con.commit()
 
 
         # Update Subscribers #
 
         # Find the username of the last subscriber already entered into the DB #
-        cur.execute("SELECT Username FROM subscribers ORDER BY Date_Subscribed desc limit 1")
-        rows = cur.fetchall()
+        check_for_updates_cur.execute("SELECT Username FROM subscribers ORDER BY Date_Subscribed desc limit 1")
+        rows = check_for_updates_cur.fetchall()
         try:
             sub_old_record = rows[0][0]
         except IndexError:
@@ -685,7 +801,7 @@ class Tundras_Tracker():
         while sub_on == 1:
             twitch_subscribers_api_url = 'https://api.twitch.tv/kraken/channels/' + twitch_username + '/subscriptions?direction=desc&limit=100&offset=' + str(offset) + '&oauth_token=' + twitch_oauth_token
             twitch_subscribers = json.load(urllib2.urlopen(twitch_subscribers_api_url))
-            ## Pull Payment Info from StreamTip and insert new records ##
+            
             for item in twitch_subscribers['subscriptions']:
                 if item['user']['display_name'] == sub_old_record:
                     print 'Subscribers Are Up To Date'
@@ -695,7 +811,7 @@ class Tundras_Tracker():
                 date = item['created_at'][0:10]
                 time = item['created_at'][12:18]
                 try:
-                    cur.execute("INSERT INTO subscribers (Username, Date_Subscribed, Time) VALUES ('%s','%s','%s')" % (item['user']['display_name'], date, time))
+                    check_for_updates_cur.execute("INSERT INTO subscribers (Username, Date_Subscribed, Time) VALUES ('%s','%s','%s')" % (item['user']['display_name'], date, time))
                 except:
                     # Need to write to a log file here
                     logging.exception('\n\nUnknown Exception (This subscription was not loaded into the DB):\n')
@@ -706,85 +822,43 @@ class Tundras_Tracker():
                 sub_on = 0
 
         ## Pushes Changes to DB ##
-        con.commit()
-
-        return True
-
-
-
-    ## Refresh Donations and Subscribers ##
-    def on_refresh(self, widget):
-        self.fill_recent_donor_store()
-        self.fill_last_10_donor_store()
-        self.fill_recent_sub_store()
-        self.fill_last_10_sub_store()
-        return True
+        check_for_updates_con.commit()
+        update_running = 0
 
 
 
-    ## Update Current Sub Count ##
-    def get_current_sub_count(self, widget):
-        twitch_sub_count_api_url = 'https://api.twitch.tv/kraken/channels/' + twitch_username + '/subscriptions?direction=desc&limit=1&offset=0&oauth_token=' + twitch_oauth_token
-        twitch_sub_count = json.load(urllib2.urlopen(twitch_sub_count_api_url))
-        self.sub_current.set_markup('<span size="18000">' + str(twitch_sub_count['_total']) + '</span>')
-        self.sub_current.set_use_markup(True)
-        print "Sub Stats Updated"
-        return True
 
-
-    ## Update Current Followers Count ##
-    def get_current_follow_count(self, widget):
-        twitch_follow_count_api_url = 'https://api.twitch.tv/kraken/channels/' + twitch_username + '/follows?limit=1&offset=0'
-        twitch_follow_count = json.load(urllib2.urlopen(twitch_follow_count_api_url))
-
-        if int(twitch_follow_count['_total']) == 0:
-            return True    
-        else:
-            self.follow_current.set_text('<span size="18000">' + str(twitch_follow_count['_total']) + '</span>')
-            self.follow_current.set_use_markup(True)
-            print "Followers Updated"
-            return True
-
-
-    ## Update Current Viewer Count ##
-    def get_current_viewers_count(self, widget):
-        twitch_viewers_count_api_url = 'https://api.twitch.tv/kraken/streams/' + twitch_username
-        twitch_viewers_count = json.load(urllib2.urlopen(twitch_viewers_count_api_url))
-        try:
-            self.viewers_current.set_markup('<span size="18000">' + str(twitch_viewers_count['stream']['viewers']) + '</span>')
-        except:
-            self.viewers_current.set_markup('<span size="14000">Not Streaming</span>')
-
-        self.viewers_current.set_use_markup(True)
-        print "Viewers Updated"
-        return True
-
-
-
-    ## Reload All Subscribers Button ##
+###### Reload All Subscribers Button ######
     def reload_sub_btn(self, widget):
-
+        print "Reloading All Subscribers"
+        reload_subs_con = None
+        reload_subs_con = psycopg2.connect("dbname='%s' user='%s' host='%s' password='%s'" % (db_name, db_user, db_server, db_password))
+        reload_subs_cur = reload_subs_con.cursor()
+        global update_running
+        if update_running == 1:
+            print "already running"
+            return False
         # Recreate Subscribers Table to Clear It #
-        cur.execute("DROP table Subscribers")
-        cur.execute("CREATE TABLE subscribers(Username varchar(30), Date_Subscribed date DEFAULT CURRENT_DATE NOT NULL, Time time DEFAULT CURRENT_TIME NOT NULL)")
-        con.commit()
+        try:
+            reload_subs_cur.execute("DROP TABLE previous_subscribers")
+        except:
+            reload_subs_con.rollback()
+        reload_subs_cur.execute("ALTER TABLE subscribers RENAME TO previous_subscribers")
+        reload_subs_cur.execute("CREATE TABLE subscribers(Username varchar(30), Date_Subscribed date DEFAULT CURRENT_DATE NOT NULL, Time time DEFAULT CURRENT_TIME NOT NULL)")
+        reload_subs_con.commit()
         
         offset = 0
-        global sub_on 
+        global sub_on
         sub_on = 1
         while sub_on == 1:
             twitch_subscribers_api_url = 'https://api.twitch.tv/kraken/channels/' + twitch_username + '/subscriptions?direction=desc&limit=100&offset=' + str(offset) + '&oauth_token=' + twitch_oauth_token
             twitch_subscribers = json.load(urllib2.urlopen(twitch_subscribers_api_url))
-            ## Pull Payment Info from StreamTip and insert new records ##
             for item in twitch_subscribers['subscriptions']:
-                if item['user']['display_name'] == sub_old_record:
-                    print 'Subscribers Are Up To Date'
-                    sub_on = 0
-                    break 
             # Parse the date string that streamtip gives you #
                 date = item['created_at'][0:10]
+                time = item['created_at'][12:18]
                 try:
-                    cur.execute("INSERT INTO subscribers (Username, Date_Subscribed) VALUES ('%s','%s')" % (item['user']['display_name'], date))
+                    reload_subs_cur.execute("INSERT INTO subscribers (Username, Date_Subscribed, Time) VALUES ('%s','%s','%s')" % (item['user']['display_name'], date, time))
                 except:
                     # Need to write to a log file here
                     logging.exception('\n\nUnknown Exception (This subscription was not loaded into the DB):\n')
@@ -793,95 +867,107 @@ class Tundras_Tracker():
             offset = offset + 100
             if offset > int(sub_offset):
                 sub_on = 0
-
         ## Pushes Changes to DB ##
-        con.commit()
+        reload_subs_cur.execute("INSERT INTO lost_subscribers SELECT username, date_subscribed FROM subscribers where username not in (SELECT username FROM previous_subscribers)")
+        reload_subs_cur.execute("DROP TABLE previous_subscribers")
+        reload_subs_con.commit()
+        update_running = 0
 
-        return True
 
 
-
-    ## Donation Lists ##
+###### Donation Lists ######
 
     # Clear Most Recent Donor Button
     def clear_recent_donor_list(self, widget):
-        self.donstore1.clear()
+        self.donlist1.clear()
         global don_clear_status
         don_clear_status = 1
-        return self.donstore1
+        return self.donlist1
 
 
     def create_recent_donor_list(self):
-        self.donstore1 = gtk.ListStore(str, str, str, str)
-        return self.donstore1
+        self.donlist1 = gtk.ListStore(str, str, str, str)
+        return self.donlist1
 
 
-    def fill_recent_donor_store(self):
-        self.donstore1.clear()
+    def fill_recent_donor_list(self):
+        don1_con = None
+        don1_con = psycopg2.connect("dbname='%s' user='%s' host='%s' password='%s'" % (db_name, db_user, db_server, db_password))
+        don1_cur = don1_con.cursor()
+
+        self.donlist1.clear()
         global don_old_record
         global don_clear_status
 
         try:
-            cur.execute("SELECT * FROM donations ORDER BY date desc, time desc limit 1")
-            rows = cur.fetchall()
+            don1_cur.execute("SELECT * FROM donations ORDER BY date desc, time desc limit 1")
+            rows = don1_cur.fetchall()
 
             amount = rows[0][2]
             amount = '%.2f' % amount
             transactionid = rows[0][4]
 
             if transactionid != don_old_record:
-                self.donstore1.append([rows[0][0], amount, rows[0][3], rows[0][0]])
+                self.donlist1.append([rows[0][0], amount, rows[0][3], rows[0][0]])
                 don_old_record = rows[0][4]
                 don_clear_status = 0
                 self.donor_color()
-                return self.donstore1
+                don1_con.close()
+                return self.donlist1
 
             elif don_clear_status == 0:
-                self.donstore1.append([rows[0][0], amount, rows[0][3], rows[0][0]])
-                return self.donstore1
+                self.donlist1.append([rows[0][0], amount, rows[0][3], rows[0][0]])
+                don1_con.close()
+                return self.donlist1
 
             else:
+                don1_con.close()
                 return False
                      
         except IndexError:
             print "indexerror"
-            logging.exception('Exception:')
-            self.donstore1.append(['None', 'None', 'None', 'None'])
-            return self.donstore1
+            logging.exception('Exception (There is probably no data in the donations DB, filling it with "None"):')
+            self.donlist1.append(['None', 'None', 'None', 'None'])
+            don1_con.close()
+            return self.donlist1
 
         except UnboundLocalError:
             print "unbounderror"
             logging.exception('Exception:')
-            self.donstore1.append(['None', 'None', 'None', 'None'])
-            return self.donstore1
-
+            self.donlist1.append(['None', 'None', 'None', 'None'])
+            don1_con.close()
+            return self.donlist1
 
 
 
     def create_last_10_donor_list(self):
-        self.donstore10 = gtk.ListStore(str, str, str, str)
-        return self.donstore10
+        self.donlist10 = gtk.ListStore(str, str, str, str)
+        return self.donlist10
 
-    def fill_last_10_donor_store(self):
-        self.donstore10.clear()
+    def fill_last_10_donor_list(self):
+        don10_con = None
+        don10_con = psycopg2.connect("dbname='%s' user='%s' host='%s' password='%s'" % (db_name, db_user, db_server, db_password))
+        don10_cur = don10_con.cursor()
+        self.donlist10.clear()
 
         try:
-            cur.execute("SELECT * FROM donations ORDER BY date desc, time desc limit 10")
-            rows = cur.fetchall()
+            don10_cur.execute("SELECT * FROM donations ORDER BY date desc, time desc limit 10")
+            rows = don10_cur.fetchall()
 
             rownumber = 0
 
             while rownumber != 10:
                 amount = rows[rownumber][2]
                 amount = '%.2f' % amount
-                self.donstore10.append([rows[rownumber][0], amount, rows[rownumber][3], rows[rownumber][0]])
+                self.donlist10.append([rows[rownumber][0], amount, rows[rownumber][3], rows[rownumber][0]])
                 rownumber = rownumber + 1
         
         except IndexError:
-            logging.exception('Exception:')
-            self.donstore10.append(['None', 'None', 'None', 'None'])
+            logging.exception('Exception (There is probably no data in the donations DB, filling it with "None"):')
+            self.donlist10.append(['None', 'None', 'None', 'None'])
 
-        return self.donstore10
+        don10_con.close()
+        return self.donlist10
 
         
 
@@ -927,83 +1013,102 @@ class Tundras_Tracker():
 
 
 
-    ## Subscriber Lists ##
+###### Subscriber Lists ######
 
-    # Clear Most Recent Subscriber Button
+    ## Clear Most Recent Subscriber Button ##
     def clear_recent_sub_list(self, widget):
-        self.substore1.clear()
+        self.sublist1.clear()
         global sub_clear_status
         sub_clear_status = 1
-        return self.substore1
+        return self.sublist1
 
 
+    ## Create Recent Subscriber List ##
     def create_recent_sub_list(self):
-        self.substore1 = gtk.ListStore(str, str)
-        return self.substore1
+        self.sublist1 = gtk.ListStore(str, str)
+        return self.sublist1
 
 
-    def fill_recent_sub_store(self):
-        self.substore1.clear()
+    ## Fill Recent Subscriber List ##
+    def fill_recent_sub_list(self):
+        sub1_con = None
+        sub1_con = psycopg2.connect("dbname='%s' user='%s' host='%s' password='%s'" % (db_name, db_user, db_server, db_password))
+        sub1_cur = sub1_con.cursor()
+
+        self.sublist1.clear()
         global sub_old_record
         global sub_clear_status
 
         try:
-            cur.execute("SELECT * FROM subscribers ORDER BY Date_Subscribed desc, time desc limit 1")
-            rows = cur.fetchall()
+            sub1_cur.execute("SELECT * FROM subscribers ORDER BY Date_Subscribed desc, time desc limit 1")
+            rows = sub1_cur.fetchall()
 
             if rows[0][0] != sub_old_record:
-                self.substore1.append([rows[0][0], str(rows[0][1])])
+                self.sublist1.append([rows[0][0], str(rows[0][1])])
                 sub_old_record = rows[0][0]
                 sub_clear_status = 0
                 self.sub_color()
-                return self.substore1
+                sub1_con.close()
+                return self.sublist1
 
             elif sub_clear_status == 0:
-                self.substore1.append([rows[0][0], str(rows[0][1])])
-                return self.substore1
+                self.sublist1.append([rows[0][0], str(rows[0][1])])
+                sub1_con.close()
+                return self.sublist1
 
             else:
+                sub1_con.close()
                 return False
                      
         except IndexError:
             print "indexerror"
-            logging.exception('Exception:')
-            self.substore1.append(['None', 'None'])
-            return self.substore1
+            logging.exception('Exception (There is probably no data in the subscribers DB, filling it with "None"):')
+            self.sublist1.append(['None', 'None'])
+            sub1_con.close()
+            return self.sublist1
 
         except UnboundLocalError:
             print "unbounderror"
             logging.exception('Exception:')
-            self.substore1.append(['None', 'None'])
-            return self.substore1
+            self.sublist1.append(['None', 'None'])
+            sub1_con.close()
+            return self.sublist1
         
 
 
-
+    ## Create Last 10 Subscribers List ##            
     def create_last_10_sub_list(self):
-        self.substore10 = gtk.ListStore(str, str)
-        return self.substore10
+        self.sublist10 = gtk.ListStore(str, str)
+        return self.sublist10
 
-    def fill_last_10_sub_store(self):
-        self.substore10.clear()
+
+    ## Fill Last 10 Subscribers List ## 
+    def fill_last_10_sub_list(self):
+        sub10_con = None
+        sub10_con = psycopg2.connect("dbname='%s' user='%s' host='%s' password='%s'" % (db_name, db_user, db_server, db_password))
+        sub10_cur = sub10_con.cursor()
+
+        self.sublist10.clear()
 
         try:
-            cur.execute("SELECT * FROM subscribers ORDER BY Date_Subscribed desc, time desc limit 10")
-            rows = cur.fetchall()
+            sub10_cur.execute("SELECT * FROM subscribers ORDER BY Date_Subscribed desc, time desc limit 10")
+            rows = sub10_cur.fetchall()
 
             rownumber = 0
 
             while rownumber != 10:
-                self.substore10.append([rows[rownumber][0], str(rows[rownumber][1])])
+                self.sublist10.append([rows[rownumber][0], str(rows[rownumber][1])])
                 rownumber = rownumber + 1
         
         except IndexError:
-            logging.exception('Exception:')
-            self.substore10.append(['None', 'None'])
+            logging.exception('Exception (There is probably no data in the subscribers DB, filling it with "None"):')
+            self.sublist10.append(['None', 'None'])
 
-        return self.substore10
+        sub10_con.close()
+        return self.sublist10
         
 
+    ## Create Last 10 Subscribers TreeView ## 
     def create_subscriber_columns(self, sub_treeView):
     
         rendererText = gtk.CellRendererText()
@@ -1017,6 +1122,7 @@ class Tundras_Tracker():
         sub_treeView.append_column(column)
 
 
+    ## Change Subscriber Clear Button Color ##
     def sub_color(self):
         map = self.sub1_clear_btn.get_colormap() 
         color = map.alloc_color("orange")
@@ -1032,6 +1138,6 @@ class Tundras_Tracker():
 
 
 
-
+gobject.threads_init()
 Tundras_Tracker()
 gtk.main()
