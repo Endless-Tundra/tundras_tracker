@@ -3,8 +3,10 @@
 # Copyright © 2015 Warren Turner
 # Licensed under the LGPL version 2.1 or later
 # Tundra's Tracker for Twitch
+# Version 0.8
 
-import urllib2
+import os
+import requests
 import json
 import psycopg2
 import sys
@@ -16,8 +18,8 @@ import time
 import gobject
 import glib
 import threading
-
-
+import urllib2
+import pango
 
 ## Set Global Variables ##
 
@@ -26,11 +28,27 @@ sub_old_record = 0
 don_clear_status = 0
 sub_clear_status = 0
 update_running = 0
+sub_cur_running = 0
+follow_cur_running = 0
+viewers_cur_running = 0
+top_donator_running = 0
 
 
 ## Congfig File ##
-configParser = ConfigParser.RawConfigParser()   
-configFilePath = r'/Users/wturner/Documents/git/tundras_tracker/twitch_tracker.conf'
+workingdir = os.getcwd()
+
+print workingdir
+
+if os.name == "nt":
+    configFilePath = r'' + workingdir + '\\twitch_tracker.conf'
+    print "windows"
+    print configFilePath
+elif os.name == "posix":
+    configFilePath = r'' + workingdir + '/twitch_tracker.conf'
+    print "mac"
+
+configParser = ConfigParser.RawConfigParser() 
+
 configParser.read(configFilePath)
 
 ## Set Logging ##
@@ -38,13 +56,13 @@ log_file = configParser.get('logging', 'log_file')
 log_level = configParser.get('logging', 'log_level')
 logging.basicConfig(filename=log_file,level=log_level)
 
-
 ## Enable/Disable Full Load Button ##
 reload_sub_btn_status = configParser.get('reload_sub', 'allow')
 
 # Change to Boolean
 if reload_sub_btn_status == "True":
     reload_sub_btn_status = True
+
 if reload_sub_btn_status == "False":
     reload_sub_btn_status = False
 
@@ -100,7 +118,7 @@ except:
     con.rollback()
 
 try:
-    cur.execute("CREATE TABLE total_donations(Username varchar(100), Subscriber_Status varchar(30), Amount INT)")
+    cur.execute("CREATE TABLE total_donations(Username varchar(100), Subscriber_Status varchar(30), Amount REAL)")
     con.commit()
 except:
     ## Rollback if create table command fails ##
@@ -108,7 +126,7 @@ except:
     con.rollback()
 
 try:
-    cur.execute("CREATE TABLE session_stats(Type varchar(30), Info varchar(100), Amount INT)")
+    cur.execute("CREATE TABLE session_stats(Type varchar(30), Info varchar(100), Amount REAL)")
     con.commit()
 except:
     ## Rollback if create table command fails ##
@@ -123,62 +141,61 @@ except:
     print "Lost Subscribers Table Already Exists"
     con.rollback()
 
-
+con.close()
 # f = open('workfile', 'w')
 
-## GUI Start ##
+
+############### GUI ###############
+
 
 class Tundras_Tracker():
     def __init__(self):
-        # super(Tundras_Tracker, self).__init__()
         
-    ### Main Windows ###
 
-        # Set Title, Size, and Window Postion
+###### Main Window ######
+
+        ## Set Title, Size, and Window Postion ##
         main_window = gtk.Window(gtk.WINDOW_TOPLEVEL)
         main_window.set_title("Tundra's Tracker")
         main_window.set_size_request(1300, 650)
         main_window.set_position(gtk.WIN_POS_MOUSE)
         main_window.set_border_width(0)
-
+        # main_window.modify_font(pango.FontDescription('Sans Bold Not-Rotated'))
         main_window.connect("destroy", gtk.main_quit)
 
 
 
+###### Load Section ######
 
-
-    ### Load Section ###
-
-        # Load Button (Refresh)
+    ## Refresh Button (Refresh) ##
         refresh_btn = gtk.Button("Refresh")
-        refresh_btn.set_size_request(90,25)
+        refresh_btn.set_size_request(120,25)
         refresh_btn.set_tooltip_text("Check for new Subscriptions and Donations")
 
-        # refresh_btn.connect("clicked", self.refresh_btn)
         refresh_btn.connect("clicked", self.check_for_updates_thread)
-        refresh_btn.connect("clicked", self.listfill_thread)
+        refresh_btn.connect("clicked", self.listfill_run)
         refresh_btn.connect("clicked", self.stats_thread)
 
 
-        # Reload all Subscribers Button
-        reload_sub_btn = gtk.Button("Reload Subscribers")
-        reload_sub_btn.set_size_request(120,25)
-        reload_sub_btn.set_tooltip_text("Perform a full load of all records.  Must be enabled in the config file.")
-        reload_sub_btn.set_sensitive(reload_sub_btn_status)
+    ## Reload all Subscribers Button ##
+        self.reload_sub_btn = gtk.Button("Reload Subscribers")
+        self.reload_sub_btn.set_size_request(120,25)
+        self.reload_sub_btn.set_tooltip_text("Perform a full load of all records.  Must be enabled in the config file.")
+        self.reload_sub_btn.set_sensitive(reload_sub_btn_status)
 
-        reload_sub_btn.connect("clicked", self.reload_sub_btn)
-        reload_sub_btn.connect("clicked", self.listfill_thread)
-        reload_sub_btn.connect("clicked", self.get_current_sub_count)
+        self.reload_sub_btn.connect("clicked", self.reload_subs)
+        self.reload_sub_btn.connect("clicked", self.listfill_run)
+        self.reload_sub_btn.connect("clicked", self.get_current_sub_count)
 
 
-        # Load Section Frame #
+    ## Load Section Frame ##
 
-        # Format Label
+        # Frame Label #
         load_label = gtk.Label()
         load_label.set_markup('<span size="20000"><b>Load</b></span>')
         load_label.set_use_markup(True)
 
-        # Create Frame
+        # Create Frame #
         load_frame = gtk.Frame()
         load_frame.set_label_widget(load_label)
         load_frame.set_label_align(0.5, 0.5)
@@ -186,29 +203,26 @@ class Tundras_Tracker():
         load_vbox.set_border_width(10)
         load_frame.add(load_vbox)
 
-
-        # Set the Appearance of the Button Box
+        # Set the Appearance of the Button Box #
         load_vbox.set_layout(gtk.BUTTONBOX_START)
         load_vbox.set_spacing(20)
 
         # Add the Buttons #
         load_vbox.add(refresh_btn)
-        load_vbox.add(reload_sub_btn)
+        load_vbox.add(self.reload_sub_btn)
         
         # Horizontal Box inside Vertical Box for Sizing Purposes #
         load_hbox = gtk.HBox(False, 0)
         load_hbox.set_border_width(0)
-
         load_hbox.pack_start(load_frame, True, True, 0)
         
  
 
+###### Stats Section ######
 
-        ### Stats Section ###
+    ## Current Number of Subscribers ##
 
-        # Current Number of Subscribers
-
-        # Make Label
+        # Make Label #
         self.sub_current = gtk.Label()
         self.sub_current.set_text("Loading...")
 
@@ -230,11 +244,11 @@ class Tundras_Tracker():
         sub_cur_hbox.pack_start(sub_cur_frame, True, True, 0)
 
 
-        # Current Number of Followers
+    ## Current Number of Followers ##
 
-        # Make Label 
-        self.follow_current = gtk.Label()
-        self.follow_current.set_text("Loading...")
+        # Make Label #
+        self.follow_cur = gtk.Label()
+        self.follow_cur.set_text("Loading...")
 
         follow_cur_label = gtk.Label()
         follow_cur_label.set_markup('<span size="13500"><b>Total Followers</b></span>')
@@ -246,7 +260,7 @@ class Tundras_Tracker():
         follow_cur_vbox = gtk.VBox(False, 8)
         follow_cur_vbox.set_border_width(10)
         follow_cur_frame.add(follow_cur_vbox)
-        follow_cur_vbox.add(self.follow_current)
+        follow_cur_vbox.add(self.follow_cur)
         
 
         follow_cur_hbox = gtk.HBox(False, 8)
@@ -254,23 +268,24 @@ class Tundras_Tracker():
         follow_cur_hbox.pack_start(follow_cur_frame, True, True, 0)
 
 
-        # Current Number of Viewers
+    ## Current Number of Viewers ##
 
-        # Make Label 
-        self.viewers_current = gtk.Label()
-        self.viewers_current.set_text("Loading...")
+        # Make Label #
+        self.viewers_cur = gtk.Label()
+        self.viewers_cur.set_text("Loading...")
 
         viewers_cur_label = gtk.Label()
         viewers_cur_label.set_markup('<span size="13500"><b>Viewer Count</b></span>')
         viewers_cur_label.set_use_markup(True)
 
+        # Make Frame #
         viewers_cur_frame = gtk.Frame()
         viewers_cur_frame.set_label_widget(viewers_cur_label)
         viewers_cur_frame.set_label_align(0.1, 0.5)
         viewers_cur_vbox = gtk.VBox(False, 8)
         viewers_cur_vbox.set_border_width(10)
         viewers_cur_frame.add(viewers_cur_vbox)
-        viewers_cur_vbox.add(self.viewers_current)
+        viewers_cur_vbox.add(self.viewers_cur)
         
 
         viewers_cur_hbox = gtk.HBox(False, 8)
@@ -278,14 +293,42 @@ class Tundras_Tracker():
         viewers_cur_hbox.pack_start(viewers_cur_frame, True, True, 0)
 
 
-        # Stats Section Frame #
+    ## Top Donator ##
 
-        # Format Label
+        # Make Label # 
+        top_don_label = gtk.Label()
+        top_don_label.set_markup('<span size="13500"><b>Top Donator</b></span>')
+        top_don_label.set_use_markup(True)
+        
+        top_donator = "Loading..."
+        top_donation_amount = ""
+        self.top_don = gtk.Label()
+        self.top_don.set_text(top_donator + '\n' + top_donation_amount)
+
+
+        # Make Frame #
+        top_don_frame = gtk.Frame()
+        top_don_frame.set_label_widget(top_don_label)
+        top_don_frame.set_label_align(0.1, 0.5)
+        top_don_vbox = gtk.VBox(False, 8)
+        top_don_vbox.set_border_width(10)
+        top_don_frame.add(top_don_vbox)
+        top_don_vbox.add(self.top_don)
+        
+
+        top_don_hbox = gtk.HBox(False, 8)
+        top_don_hbox.set_border_width(0)
+        top_don_hbox.pack_start(top_don_frame, True, True, 0)
+
+
+    ## Stats Section Frame ##
+
+        # Frame Label #
         stats_label = gtk.Label()
         stats_label.set_markup('<span size="20000"><b>Stats</b></span>')
         stats_label.set_use_markup(True)
 
-        # Create Frame
+        # Create Frame #
         stats_frame = gtk.Frame()
         stats_frame.set_label_widget(stats_label)
         stats_frame.set_label_align(0.5, 0.5)
@@ -293,8 +336,7 @@ class Tundras_Tracker():
         stats_vbox.set_border_width(10)
         stats_frame.add(stats_vbox)
 
-
-        # Set the Appearance of the Button Box
+        # Set the Appearance of the Button Box #
         stats_vbox.set_layout(gtk.BUTTONBOX_START)
         stats_vbox.set_spacing(20)
 
@@ -306,21 +348,58 @@ class Tundras_Tracker():
         # Horizontal Box inside Vertical Box for Sizing Purposes #
         stats_hbox = gtk.HBox(False, 0)
         stats_hbox.set_border_width(0)
-
         stats_hbox.pack_start(stats_frame, True, True, 0)
 
 
 
+###### Data Insights Section ######
 
-    ### Donation Section ###
+    ## Lost Subscribers Button ##
+        lost_subs_btn = gtk.Button("Lost Subscribers")
+        lost_subs_btn.set_size_request(120,25)
+        lost_subs_btn.set_tooltip_text("Show Subscribers that have not renewed")
 
-        # Clear Recent Donor Button
+        lost_subs_btn.connect("clicked", self.lost_subs_window)
+
+
+    ## Data Insights Section Frame ##
+
+        # Frame Label #
+        data_insights_label = gtk.Label()
+        data_insights_label.set_markup('<span size="20000"><b>DI</b></span>')
+        data_insights_label.set_use_markup(True)
+
+        # Create Frame #
+        data_insights_frame = gtk.Frame()
+        data_insights_frame.set_label_widget(data_insights_label)
+        data_insights_frame.set_label_align(0.5, 0.5)
+        data_insights_vbox = gtk.VButtonBox()
+        data_insights_vbox.set_border_width(10)
+        data_insights_frame.add(data_insights_vbox)
+
+        # Set the Appearance of the Button Box #
+        data_insights_vbox.set_layout(gtk.BUTTONBOX_START)
+        data_insights_vbox.set_spacing(20)
+
+        # Add the Buttons #
+        data_insights_vbox.add(lost_subs_btn)
+        
+        # Horizontal Box inside Vertical Box for Sizing Purposes #
+        data_insights_hbox = gtk.HBox(False, 0)
+        data_insights_hbox.set_border_width(0)
+        data_insights_hbox.pack_start(data_insights_frame, True, True, 0)
+
+
+
+###### Donation Section ######
+
+    ## Clear Recent Donor Button ##
         self.don1_clear_btn = gtk.Button('Clear')
         self.don1_clear_btn.connect("clicked", self.clear_recent_donor_list)
         self.don1_clear_btn.connect("clicked", self.donor_uncolor)
         
 
-        # Most Recent Donor List #
+    ## Most Recent Donor List ##
 
         # Make scrolling window 
         don1_list = gtk.ScrolledWindow()
@@ -342,9 +421,9 @@ class Tundras_Tracker():
         don1_list.add(don1_tree)
 
 
-        # Most Recent Donor Frame #
+    ## Most Recent Donor Frame ##
 
-        # Format Label
+        # Frame Label
         don1_label = gtk.Label()
         don1_label.set_markup('<span size="15000"><b>Most Recent Donor</b></span>')
         don1_label.set_use_markup(True)
@@ -367,9 +446,9 @@ class Tundras_Tracker():
 
 
 
-        # Last 10 Donors List
+    ## Last 10 Donors List ##
 
-        # Make scrolling window 
+        # Make scrolling window #
         don10_list = gtk.ScrolledWindow()
         don10_list.set_size_request(490,350)
         don10_list.set_shadow_type(gtk.SHADOW_ETCHED_IN)
@@ -378,24 +457,25 @@ class Tundras_Tracker():
         self.donlist10 = self.create_last_10_donor_list()
         self.fill_last_10_donor_list()
 
-        # Make a TreeView
+        # Make a TreeView #
         don10_tree = gtk.TreeView(self.donlist10)
         don10_tree.set_rules_hint(True)
         don10_tree.columns_autosize()
-        don10_tree.set_grid_lines(gtk.TREE_VIEW_GRID_LINES_VERTICAL)
+        don10_tree.set_grid_lines(gtk.TREE_VIEW_GRID_LINES_BOTH)
         self.create_donation_columns(don10_tree)
 
-        # Add don_tree to the Scrolling Window
+        # Add don_tree to the Scrolling Window #
         don10_list.add(don10_tree)
 
-        # Last 10 Donors Frame #
 
-        # Format Label
+    ## Last 10 Donors Frame ##
+
+        # Frame Label #
         don10_label = gtk.Label()
         don10_label.set_markup('<span size="15000"><b>Last 10 Donors</b></span>')
         don10_label.set_use_markup(True)
 
-        # Create Frame
+        # Create Frame #
         don10_frame = gtk.Frame()
         don10_frame.set_label_widget(don10_label)
         don10_frame.set_label_align(0.1, 0.5)
@@ -432,11 +512,6 @@ class Tundras_Tracker():
         # Add Clear Button and TreeLists to Box
         don_vbox.add(don1_hbox)
         don_vbox.add(don10_hbox)
-        
-
-        # # We add a status bar that doesn't show up to prevent the list from being highlighted by default (No idea why this works)
-        # self.statusbar = gtk.Statusbar()
-        # don_vbox.add(self.statusbar)
 
 
         # Horizontal Box inside Vertical Box for Sizing Purposes #
@@ -446,18 +521,16 @@ class Tundras_Tracker():
 
 
 
+###### Subscriber Section ######
 
-
-### Subscriber Section ###
-
-        # Clear Recent Donor Button
+    ## Clear Recent Donor Button ##
         self.sub1_clear_btn = gtk.Button('Clear')
         self.sub1_clear_btn.connect("clicked", self.clear_recent_sub_list)
         self.sub1_clear_btn.connect("clicked", self.sub_uncolor)
 
-        # Most Recent Subscriber List #
+    ## Most Recent Subscriber List ##
 
-        # Make scrolling window 
+        # Make scrolling window #
         sub1_list = gtk.ScrolledWindow()
         sub1_list.set_size_request(220,80)
         sub1_list.set_shadow_type(gtk.SHADOW_ETCHED_IN)
@@ -466,18 +539,18 @@ class Tundras_Tracker():
         self.sublist1 = self.create_recent_sub_list()
         self.fill_recent_sub_list()
 
-        # Make a TreeView
+        # Make a TreeView #
         sub1_tree = gtk.TreeView(self.sublist1)
         sub1_tree.set_rules_hint(True)
         sub1_tree.columns_autosize()
         sub1_tree.set_grid_lines(gtk.TREE_VIEW_GRID_LINES_VERTICAL)
         self.create_subscriber_columns(sub1_tree)
 
-        # Add sub1_tree to the Scrolling Window
+        # Add sub1_tree to the Scrolling Window #
         sub1_list.add(sub1_tree)
 
 
-        # Most Recent Subscriber Frame #
+    ## Most Recent Subscriber Frame ##
 
         # Format Label
         sub1_label = gtk.Label()
@@ -502,9 +575,9 @@ class Tundras_Tracker():
 
 
 
-        # Last 10 Subscribers List
+    ## Last 10 Subscribers List ##
 
-        # Make scrolling window 
+        # Make scrolling window #
         sub10_list = gtk.ScrolledWindow()
         sub10_list.set_size_request(220,225)
         sub10_list.set_shadow_type(gtk.SHADOW_ETCHED_IN)
@@ -513,24 +586,24 @@ class Tundras_Tracker():
         self.sublist10 = self.create_last_10_sub_list()
         self.fill_last_10_sub_list()
 
-        # Make a TreeView
+        # Make a TreeView #
         sub10_tree = gtk.TreeView(self.sublist10)
         sub10_tree.set_rules_hint(True)
         sub10_tree.columns_autosize()
-        sub10_tree.set_grid_lines(gtk.TREE_VIEW_GRID_LINES_VERTICAL)
+        sub10_tree.set_grid_lines(gtk.TREE_VIEW_GRID_LINES_BOTH)
         self.create_subscriber_columns(sub10_tree)
 
-        # Add don_tree to the Scrolling Window
+        # Add don_tree to the Scrolling Window #
         sub10_list.add(sub10_tree)
 
-        # Last 10 Subscribers Frame #
+    ## Last 10 Subscribers Frame ##
 
-        # Format Label
+        # Format Label #
         sub10_label = gtk.Label()
         sub10_label.set_markup('<span size="15000"><b>Last 10 Subscribers</b></span>')
         sub10_label.set_use_markup(True)
 
-        # Create Frame
+        # Create Frame #
         sub10_frame = gtk.Frame()
         sub10_frame.set_label_widget(sub10_label)
         sub10_frame.set_label_align(0.1, 0.5)
@@ -546,19 +619,14 @@ class Tundras_Tracker():
 
 
 
-
-
-
-
-
-        # Subscriber Frame # 
+    ## Combined Subscriber Frame ##
         
-        # Format Label
+        # Format Label #
         sub_label = gtk.Label()
         sub_label.set_markup('<span size="20000"><b>Subscribers</b></span>')
         sub_label.set_use_markup(True)
 
-        # Create Frame
+        # Create Frame #
         sub_frame = gtk.Frame()
         sub_frame.set_label_widget(sub_label)
         sub_frame.set_label_align(0.5, 0.5)
@@ -566,18 +634,12 @@ class Tundras_Tracker():
         sub_vbox.set_border_width(10)
         sub_frame.add(sub_vbox)
 
-        # Set Spacking between widgets
+        # Set Spacking between widgets #
         sub_vbox.set_spacing(40)
         
-        # Add Clear Button and TreeLists to Box
+        # Add Clear Button and TreeLists to Box #
         sub_vbox.add(sub1_hbox)
         sub_vbox.add(sub10_hbox)
-        
-
-        # # We add a status bar that doesn't show up to prevent the list from being highlighted by default (No idea why this works)
-        # self.statusbar = gtk.Statusbar()
-        # sub_vbox.add(self.statusbar)
-
 
         # Horizontal Box inside Vertical Box for Sizing Purposes #
         sub_hbox = gtk.HBox(False, 8)
@@ -586,48 +648,94 @@ class Tundras_Tracker():
 
 
 
+###### Top Donator Section ######
 
-        # Create a colored border
-        # button = gtk.Button("Click me")
-        # button.set_border_width(50)
-        # eb = gtk.EventBox()
-        # eb.modify_bg(gtk.STATE_NORMAL, gtk.gdk.color_parse("gray"))
-        # eb.add(button)
+    ## Clear Top Donator Button ##
+        self.top_don_clear_btn = gtk.Button('Reset Top Donator')
+        self.top_don_clear_btn.connect("clicked", self.clear_top_don_list)
 
-        # Create Fixed Container so you can position all the frames where you want them #
+    ## Top Donator List ##
+
+        # Make scrolling window #
+        top_don_list = gtk.ScrolledWindow()
+        top_don_list.set_size_request(245,50)
+        top_don_list.set_shadow_type(gtk.SHADOW_ETCHED_IN)
+        top_don_list.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
+
+        self.top_don_list = self.create_top_don_list()
+        self.fill_top_don_list()
+
+        # Make a TreeView #
+        top_don_tree = gtk.TreeView(self.top_don_list)
+        top_don_tree.set_rules_hint(True)
+        top_don_tree.columns_autosize()
+        top_don_tree.set_grid_lines(gtk.TREE_VIEW_GRID_LINES_VERTICAL)
+        self.create_top_don_columns(top_don_tree)
+
+        # Add top_don_tree to the Scrolling Window #
+        top_don_list.add(top_don_tree)
+
+
+    ## Top Donator Frame ##
+
+        # Format Label
+        top_don_label = gtk.Label()
+        top_don_label.set_markup('<span size="15000"><b>Top Donator</b></span>')
+        top_don_label.set_use_markup(True)
+
+        # Create Frame
+        top_don_frame = gtk.Frame()
+        top_don_frame.set_label_widget(top_don_label)
+        top_don_frame.set_label_align(0.1, 0.5)
+        top_don_vbox = gtk.VBox(False, 8)
+        top_don_vbox.set_border_width(10)
+        top_don_frame.add(top_don_vbox)
+        top_don_vbox.add(self.top_don_clear_btn)
+        top_don_vbox.add(top_don_list)
+
+
+        top_don_hbox = gtk.HBox(False, 8)
+        top_don_hbox.set_border_width(0)
+        top_don_hbox.pack_start(top_don_frame, True, True, 0)
+
+
+
+###### Create Fixed Container so you can position all the frames where you want them ######
         fixed = gtk.Fixed()
         fixed.put(load_hbox, 25, 10)
         fixed.put(stats_hbox, 25, 150)
+        fixed.put(data_insights_hbox, 25, 500)
         fixed.put(don_hbox, 200, 10)
         fixed.put(sub_hbox, 750, 10)
+        fixed.put(top_don_hbox, 750, 510)
+        
 
-        # Add everything to the main window
 
-        refresh_btn.grab_default()
+###### Add everything to the main window ######
+
+        # refresh_btn.grab_default()
         main_window.add(fixed)
         main_window.show_all()
 
-        ## Refresh Every X Seconds (Set in Config File) ###
-        gtk.timeout_add(update_interval, self.check_for_updates_thread, self)
-        gtk.timeout_add(update_interval, self.listfill_run)
 
-        ## Refresh Current Stats ##
+
+###### Enable Auto Updating ######
+    ## Refresh Updates (Interval Set in Config File) ###
+        gtk.timeout_add(update_interval, self.check_for_updates_thread, self)
+        gtk.timeout_add(update_interval, self.listfill_run, self)
+
+    ## Refresh Current Stats (Interval Set in Config File)##
         gtk.timeout_add(stat_update_interval, self.stats_thread, self)
 
-        # gtk.timeout_add(600000, self.get_current_sub_count, self)
-        # gtk.timeout_add(update_interval, self.get_current_follow_count, self)
-        # gtk.timeout_add(update_interval, self.get_current_viewers_count, self)
 
 
 
 
 
-   
 
 
+############### FUNCTIONS ###############
 
-
-## Functions ##
 
 ###### Threads ######
     def check_for_updates_thread(self, widget):
@@ -644,20 +752,21 @@ class Tundras_Tracker():
         return True
 
 
-###### Don't use this, it just crashes (I have no idea why) ######
-    def listfill_thread(self, widget):
-        listfill_thread = threading.Thread(target=self.listfill_run)
-        listfill_thread.daemon = True
-        listfill_thread.start()
-        return True
+# ###### Don't use this, it just crashes (I have no idea why) ######
+#     def listfill_thread(self, widget):
+#         listfill_thread = threading.Thread(target=self.listfill_run)
+#         listfill_thread.daemon = True
+#         listfill_thread.start()
+#         return True
 
 
 ###### Run Commands ######
-    def listfill_run(self):
+    def listfill_run(self, widget):
         self.fill_recent_donor_list()
         self.fill_last_10_donor_list()
         self.fill_recent_sub_list()
         self.fill_last_10_sub_list()
+        self.fill_top_don_list()
         return True
 
 
@@ -670,199 +779,275 @@ class Tundras_Tracker():
 
 ###### Functions that actually do things ######
 
+
+
+###### Update Stats ######
+
     ## Update Current Sub Count ##
     def get_current_sub_count(self, widget):
+        global sub_cur_running
+        
+        # Make sure that the get_current_sub_count function isn't already running #
+        if sub_cur_running == 1:
+            print "current sub count already running"
+            return False
+        sub_cur_running = 1
         try:
             twitch_sub_count_api_url = 'https://api.twitch.tv/kraken/channels/' + twitch_username + '/subscriptions?direction=desc&limit=1&offset=0&oauth_token=' + twitch_oauth_token
-            twitch_sub_count = json.load(urllib2.urlopen(twitch_sub_count_api_url))
+            twitch_sub_count = requests.get(twitch_sub_count_api_url, timeout=5).json()
             self.sub_current.set_markup('<span size="18000">' + str(twitch_sub_count['_total']) + '</span>')
-        except urllib2.HTTPError:
-             self.sub_current.set_markup('<span size="18000">Twitch :(</span>')
+        except:
+            logging.exception('\n\nCant Connect to Twitch to get current Sub Count:\n\n')
+            self.sub_current.set_markup('<span size="15000">Twitch :(</span>')
 
         self.sub_current.set_use_markup(True)
         print "Sub Stats Updated"
-        return True
+        sub_cur_running = 0
 
 
     ## Update Current Followers Count ##
     def get_current_follow_count(self):
+        global follow_cur_running
+        
+        # Make sure that the get_current_sub_count function isn't already running #
+        if follow_cur_running == 1:
+            print "current followers already running"
+            return False
+        follow_cur_running = 1
         try:
             twitch_follow_count_api_url = 'https://api.twitch.tv/kraken/channels/' + twitch_username + '/follows?limit=1&offset=0'
-            twitch_follow_count = json.load(urllib2.urlopen(twitch_follow_count_api_url))
+            twitch_follow_count = requests.get(twitch_follow_count_api_url, timeout=5).json()
             if int(twitch_follow_count['_total']) == 0:
                 return True    
             else:
-                self.follow_current.set_text('<span size="18000">' + str(twitch_follow_count['_total']) + '</span>')
-        except urllib2.HTTPError:
-             self.follow_current.set_markup('<span size="18000">Twitch :(</span>')
+                self.follow_cur.set_text('<span size="18000">' + str(twitch_follow_count['_total']) + '</span>')
+        except:
+            logging.exception('\n\nCant Connect to Twitch to get current Follower Count:\n\n')
+            self.follow_cur.set_markup('<span size="15000">Twitch :(</span>')
 
-        self.follow_current.set_use_markup(True)
+        self.follow_cur.set_use_markup(True)
         print "Followers Updated"
-        return True
+        follow_cur_running = 0
 
 
     ## Update Current Viewer Count ##
     def get_current_viewers_count(self):
-        twitch_viewers_count_api_url = 'https://api.twitch.tv/kraken/streams/' + twitch_username
-        twitch_viewers_count = json.load(urllib2.urlopen(twitch_viewers_count_api_url))
+        global viewers_cur_running
+        
+        # Make sure that the get_current_sub_count function isn't already running #
+        if viewers_cur_running == 1:
+            print "current viewers already running"
+            return False
+        viewers_cur_running = 1
         try:
-            self.viewers_current.set_markup('<span size="18000">' + str(twitch_viewers_count['stream']['viewers']) + '</span>')
-        except urllib2.HTTPError:
-             self.follow_current.set_markup('<span size="18000">Twitch :(</span>')
+            twitch_viewers_count_api_url = 'https://api.twitch.tv/kraken/streams/' + twitch_username
+            twitch_viewers_count = json.load(urllib2.urlopen(twitch_viewers_count_api_url))
+            self.viewers_cur.set_markup('<span size="18000">' + str(twitch_viewers_count['stream']['viewers']) + '</span>')
         except:
-            self.viewers_current.set_markup('<span size="14000">Not Streaming</span>')
+            self.viewers_cur.set_markup('<span size="14000">Not Streaming</span>')
 
-        self.viewers_current.set_use_markup(True)
+        self.viewers_cur.set_use_markup(True)
         print "Viewers Updated"
-        return True
+        viewers_cur_running = 0
 
 
 
-    ## Check For Updates (Refresh Button) ##
+###### Check For Updates (Refresh Button) ######
     def check_for_updates(self):
         global update_running
+        
+    ## Make sure that the check_for_updates function isn't already running ##
         if update_running == 1:
-            print "already running"
+            print "check for updates already running"
             return False
-        print update_running
         update_running = 1
-        check_for_updates_con = None
-        check_for_updates_con = psycopg2.connect("dbname='%s' user='%s' host='%s' password='%s'" % (db_name, db_user, db_server, db_password))
-        check_for_updates_cur = check_for_updates_con.cursor()
 
-        # Update Donations #
-        offset = 0
-        global don_on 
-        don_on = 1
-
-        streamtip_api_url = 'https://streamtip.com/api/tips?direction=desc&sort_by=date&limit=100&offset=' + str(offset) + '&client_id=' + streamtip_client_id + '&access_token=' + streamtip_access_token
-        streamtip_donations = json.load(urllib2.urlopen(streamtip_api_url))
-
-        check_for_updates_cur.execute("SELECT Transaction_Id FROM donations ORDER BY date desc, time desc limit 1")
-        rows = check_for_updates_cur.fetchall()
+    ## Make a Big Try Block to avoid the "update_running" variable from getting stuck on when an error happens ##
         try:
-            don_old_record = rows[0][0]
-        except IndexError:
-            print "There are no existing donation records. Populating..."
-            don_old_record = ''
+        ## Open Connection to DB ##
+            check_for_updates_con = None
+            check_for_updates_con = psycopg2.connect("dbname='%s' user='%s' host='%s' password='%s'" % (db_name, db_user, db_server, db_password))
+            check_for_updates_cur = check_for_updates_con.cursor()
 
-        while (streamtip_donations['_count'] > 0) and (don_on == 1):
-            streamtip_api_url = 'https://streamtip.com/api/tips?direction=desc&sort_by=date&limit=100&offset=' + str(offset) + '&client_id=' + streamtip_client_id + '&access_token=' + streamtip_access_token
-            streamtip_donations = json.load(urllib2.urlopen(streamtip_api_url)) 
-            for item in streamtip_donations['tips']:
-                if item['transactionId'] == don_old_record:
-                    print 'Donations Are Up To Date'
-                    don_on = 0
-                    break 
-                # Parse the date string that streamtip gives you #
-                date = item['date'][0:10]
-                time = item['date'][12:18]
-                note = item['note']
-                if note == None:
-                    note = 'No Message Left :('
-                note = note.encode('utf-8')
-                note = str(note)
-                note = note.translate(None, '\'\\')
-                # Replace none ASCI II Characters with a [?]
-                note = re.sub(r'[^\x00-\x7F]+','[?]', note)
+
+        ## Update Donations ##
+            offset = 0
+            global don_on 
+            don_on = 1
+
+            # Pull Donation Info from StreamTip #
+
+            try:
+                streamtip_api_url = 'https://streamtip.com/api/tips?direction=desc&sort_by=date&limit=100&offset=' + str(offset) + '&client_id=' + streamtip_client_id + '&access_token=' + streamtip_access_token
+                streamtip_donations = requests.get(streamtip_api_url, timeout=5).json()
+            except:
+                logging.exception('\n\nError connecting to StreamTip:\n\n')
+                update_running = 0
+                return True
+
+            check_for_updates_cur.execute("SELECT Transaction_Id FROM donations ORDER BY date desc, time desc limit 1")
+            rows = check_for_updates_cur.fetchall()
+            try:
+                don_old_record = rows[0][0]
+            except IndexError:
+                print "There are no existing donation records. Populating..."
+                don_old_record = ''
+
+            while (streamtip_donations['_count'] > 0) and (don_on == 1):
                 try:
-                    check_for_updates_cur.execute("INSERT INTO donations (Username, Amount, Message, Transaction_Id, Date, Time) VALUES ('%s',%f,'%s','%s','%s','%s')" % (item['username'], float(item['amount']), note, item['transactionId'], date, time))
-                except UnicodeDecodeError:
-                    logging.exception('\n\nUnicode Exception (This transaction was loaded into the DB but the note was removed):\n')
-                    error_info = '\n\nTransaction Info\nUsername: ' + item['username'] + '\nAmount: ' + item['amount'] + '\nNote: ' + item['note'] + '\nTransation_Id: ' + item['transactionId'] + '\nDate: ' + date + '\nTime: ' + time + '\n'
-                    logging.error(error_info)
-                    note = 'Sorry something about the message caused an error so it couldnt be saved :(  But Carci still loves you!'
-                    check_for_updates_cur.execute("INSERT INTO donations (Username, Amount, Message, Transaction_Id, Date, Time) VALUES ('%s',%f,'%s','%s','%s','%s')" % (item['username'], float(item['amount']), note, item['transactionId'], date, time))
+                    streamtip_api_url = 'https://streamtip.com/api/tips?direction=desc&sort_by=date&limit=100&offset=' + str(offset) + '&client_id=' + streamtip_client_id + '&access_token=' + streamtip_access_token
+                    streamtip_donations = requests.get(streamtip_api_url, timeout=5).json()
                 except:
-                    # Need to write to a log file here
-                    logging.exception('\n\nUnknown Exception (This transaction was not loaded into the DB):\n')
-                    error_info = '\n\nTransaction Info\nUsername: ' + item['username'] + '\nAmount: ' + item['amount'] + '\nNote: ' + item['note'] + '\nTransation_Id: ' + item['transactionId'] + '\nDate: ' + date + '\nTime: ' + time + '\n'
-                    logging.error(error_info)
-            offset = offset + 100
+                    logging.exception('\n\nError connecting to StreamTip:\n\n')
+                    update_running = 0
+                    check_for_updates_con.rollback()
+                    check_for_updates_con.close()
+                    return True
 
-        ## Pushes Changes to DB ##
-        check_for_updates_con.commit()
+                for item in streamtip_donations['tips']:
+                    if item['transactionId'] == don_old_record:
+                        print 'Donations Are Up To Date'
+                        don_on = 0
+                        break 
+                    # Parse the date string that streamtip gives you #
+                    date = item['date'][0:10]
+                    time = item['date'][12:18]
+                    note = item['note']
+                    if note == None:
+                        note = 'No Message Left :('
+                    note = note.encode('utf-8')
+                    note = str(note)
+                    note = note.translate(None, '\'\\')
+                    # Replace none ASCI II Characters with a [?]
+                    note = re.sub(r'[^\x00-\x7F]+','[?]', note)
+                    try:
+                        check_for_updates_cur.execute("INSERT INTO donations (Username, Amount, Message, Transaction_Id, Date, Time) VALUES ('%s',%f,'%s','%s','%s','%s')" % (item['username'], float(item['amount']), note, item['transactionId'], date, time))
+                    except UnicodeDecodeError:
+                        logging.exception('\n\nUnicode Exception (This transaction was loaded into the DB but the note was removed):\n')
+                        error_info = '\n\nTransaction Info\nUsername: ' + item['username'] + '\nAmount: ' + item['amount'] + '\nNote: ' + item['note'] + '\nTransation_Id: ' + item['transactionId'] + '\nDate: ' + date + '\nTime: ' + time + '\n'
+                        logging.error(error_info)
+                        note = 'Sorry something about the message caused an error so it couldnt be saved :(  But Carci still loves you!'
+                        check_for_updates_cur.execute("INSERT INTO donations (Username, Amount, Message, Transaction_Id, Date, Time) VALUES ('%s',%f,'%s','%s','%s','%s')" % (item['username'], float(item['amount']), note, item['transactionId'], date, time))
+                    except:
+                        # Need to write to a log file here
+                        logging.exception('\n\nUnknown Exception (This transaction was not loaded into the DB):\n')
+                        error_info = '\n\nTransaction Info\nUsername: ' + item['username'] + '\nAmount: ' + item['amount'] + '\nNote: ' + item['note'] + '\nTransation_Id: ' + item['transactionId'] + '\nDate: ' + date + '\nTime: ' + time + '\n'
+                        logging.error(error_info)
+
+                    try:
+                        check_for_updates_cur.execute("SELECT Amount FROM session_stats WHERE Type='top_donator'")
+                        top_donor_row = check_for_updates_cur.fetchall()
+
+                        if float(item['amount']) > float(top_donor_row[0][0]):
+                            check_for_updates_cur.execute("UPDATE session_stats SET Info = '%s', Amount = '%f' WHERE Type = 'top_donator'" % (item['username'], float(item['amount'])))
+                    except IndexError:
+                        print "The Top Donator Spot is empty. Populating..."
+                        check_for_updates_cur.execute("INSERT INTO session_stats (type, info, amount) VALUES ('top_donator', '%s', '%f')" % (item['username'], float(item['amount'])))
+                offset = offset + 100
+
+            # Pushes Changes to DB #
+            check_for_updates_con.commit()
 
 
-        # Update Subscribers #
+        ## Update Subscribers ##
 
-        # Find the username of the last subscriber already entered into the DB #
-        check_for_updates_cur.execute("SELECT Username FROM subscribers ORDER BY Date_Subscribed desc limit 1")
-        rows = check_for_updates_cur.fetchall()
-        try:
-            sub_old_record = rows[0][0]
-        except IndexError:
-            print "There are no existing subscriber records.  Populating..."
-            sub_old_record = ''
+            # Find the username of the last subscriber already entered into the DB #
+            check_for_updates_cur.execute("SELECT Username FROM subscribers ORDER BY Date_Subscribed desc, time desc limit 1")
+            rows = check_for_updates_cur.fetchall()
+            try:
+                sub_old_record = rows[0][0]
+            except IndexError:
+                print "There are no existing subscriber records.  Populating..."
+                sub_old_record = ''
 
-        offset = 0
-        global sub_on 
-        sub_on = 1
-        while sub_on == 1:
-            twitch_subscribers_api_url = 'https://api.twitch.tv/kraken/channels/' + twitch_username + '/subscriptions?direction=desc&limit=100&offset=' + str(offset) + '&oauth_token=' + twitch_oauth_token
-            twitch_subscribers = json.load(urllib2.urlopen(twitch_subscribers_api_url))
-            
-            for item in twitch_subscribers['subscriptions']:
-                if item['user']['display_name'] == sub_old_record:
-                    print 'Subscribers Are Up To Date'
+            offset = 0
+            global sub_on 
+            sub_on = 1
+            while sub_on == 1:
+                try:
+                    twitch_subscribers_api_url = 'https://api.twitch.tv/kraken/channels/' + twitch_username + '/subscriptions?direction=desc&limit=100&offset=' + str(offset) + '&oauth_token=' + twitch_oauth_token
+                    twitch_subscribers = requests.get(twitch_subscribers_api_url, timeout=5).json()                   
+                except:
+                    logging.exception('\n\nError connecting to Twitch to Update Subscribers:\n\n')
+                    update_running = 0
+                    check_for_updates_con.rollback()
+                    check_for_updates_con.close()
+                    return False
+                for item in twitch_subscribers['subscriptions']:
+                    if item['user']['display_name'] == sub_old_record:
+                        print 'Subscribers Are Up To Date'
+                        sub_on = 0
+                        break 
+                # Parse the date string that twitch gives you #
+                    date = item['created_at'][0:10]
+                    time = item['created_at'][12:18]
+                    try:
+                        check_for_updates_cur.execute("INSERT INTO subscribers (Username, Date_Subscribed, Time) VALUES ('%s','%s','%s')" % (item['user']['display_name'], date, time))
+                    except:
+                        # Need to write to a log file here
+                        logging.exception('\n\nUnknown Exception (This subscription was not loaded into the DB):\n')
+                        error_info = '\n\nTransaction Info\nUsername: ' + item['user']['display_name'] + '\nDate: ' + date + '\n' + time + '\n'
+                        logging.error(error_info)
+
+                offset = offset + 100
+                if offset > int(sub_offset):
                     sub_on = 0
-                    break 
-            # Parse the date string that streamtip gives you #
-                date = item['created_at'][0:10]
-                time = item['created_at'][12:18]
-                try:
-                    check_for_updates_cur.execute("INSERT INTO subscribers (Username, Date_Subscribed, Time) VALUES ('%s','%s','%s')" % (item['user']['display_name'], date, time))
-                except:
-                    # Need to write to a log file here
-                    logging.exception('\n\nUnknown Exception (This subscription was not loaded into the DB):\n')
-                    error_info = '\n\nTransaction Info\nUsername: ' + item['user']['display_name'] + '\nDate: ' + date + '\n'
-                    logging.error(error_info)
-            offset = offset + 100
-            if offset > int(sub_offset):
-                sub_on = 0
 
-        ## Pushes Changes to DB ##
-        check_for_updates_con.commit()
-        update_running = 0
+            # Pushes Changes to DB #
+            check_for_updates_con.commit()
+            check_for_updates_con.close()
+            update_running = 0
 
+        except:
+            logging.exception('\n\nSome sort of exception occurred while checking for updates:/n')
+            update_running = 0
 
 
 
 ###### Reload All Subscribers Button ######
-    def reload_sub_btn(self, widget):
-        print "Reloading All Subscribers"
+    def reload_subs(self, widget):
         reload_subs_con = None
         reload_subs_con = psycopg2.connect("dbname='%s' user='%s' host='%s' password='%s'" % (db_name, db_user, db_server, db_password))
         reload_subs_cur = reload_subs_con.cursor()
         global update_running
         if update_running == 1:
-            print "already running"
+            print "reload all subscribers already running"
             return False
-        # Recreate Subscribers Table to Clear It #
+
+        print "Reloading All Subscribers"
+        self.reload_sub_btn.set_label("Reloading...")
+        self.sublist1.clear()
+        self.sublist10.clear()
+        while gtk.events_pending():
+            gtk.main_iteration()  
+        # Move existing data to new table #
         try:
             reload_subs_cur.execute("DROP TABLE previous_subscribers")
         except:
             reload_subs_con.rollback()
+
         reload_subs_cur.execute("ALTER TABLE subscribers RENAME TO previous_subscribers")
         reload_subs_cur.execute("CREATE TABLE subscribers(Username varchar(30), Date_Subscribed date DEFAULT CURRENT_DATE NOT NULL, Time time DEFAULT CURRENT_TIME NOT NULL)")
-        reload_subs_con.commit()
         
         offset = 0
         global sub_on
         sub_on = 1
         while sub_on == 1:
-            twitch_subscribers_api_url = 'https://api.twitch.tv/kraken/channels/' + twitch_username + '/subscriptions?direction=desc&limit=100&offset=' + str(offset) + '&oauth_token=' + twitch_oauth_token
-            twitch_subscribers = json.load(urllib2.urlopen(twitch_subscribers_api_url))
+            try:
+                twitch_subscribers_api_url = 'https://api.twitch.tv/kraken/channels/' + twitch_username + '/subscriptions?direction=desc&limit=100&offset=' + str(offset) + '&oauth_token=' + twitch_oauth_token
+                twitch_subscribers = requests.get(twitch_subscribers_api_url, timeout=5).json()
+            except:
+                logging.exception('\n\nError connecting to Twitch to Update Subscribers:\n\n')
+                update_running = 0
+                return True
             for item in twitch_subscribers['subscriptions']:
-            # Parse the date string that streamtip gives you #
                 date = item['created_at'][0:10]
                 time = item['created_at'][12:18]
                 try:
                     reload_subs_cur.execute("INSERT INTO subscribers (Username, Date_Subscribed, Time) VALUES ('%s','%s','%s')" % (item['user']['display_name'], date, time))
                 except:
-                    # Need to write to a log file here
                     logging.exception('\n\nUnknown Exception (This subscription was not loaded into the DB):\n')
-                    error_info = '\n\nTransaction Info\nUsername: ' + item['user']['display_name'] + '\nDate: ' + date + '\n'
+                    error_info = '\n\nTransaction Info\nUsername: ' + item['user']['display_name'] + '\nDate: ' + date + '\n' + time + '\n'
                     logging.error(error_info)
             offset = offset + 100
             if offset > int(sub_offset):
@@ -872,6 +1057,7 @@ class Tundras_Tracker():
         reload_subs_cur.execute("DROP TABLE previous_subscribers")
         reload_subs_con.commit()
         update_running = 0
+        self.reload_sub_btn.set_label("Reload Subscribers")
 
 
 
@@ -925,16 +1111,14 @@ class Tundras_Tracker():
                 return False
                      
         except IndexError:
-            print "indexerror"
-            logging.exception('Exception (There is probably no data in the donations DB, filling it with "None"):')
-            self.donlist1.append(['None', 'None', 'None', 'None'])
+            logging.exception('\n\nException while filling recent donor list (There is probably no data in the donations DB, filling it with "Loading"):\n')
+            self.donlist1.append(['Loading', 'Loading', 'Loading', 'Loading'])
             don1_con.close()
             return self.donlist1
 
         except UnboundLocalError:
-            print "unbounderror"
-            logging.exception('Exception:')
-            self.donlist1.append(['None', 'None', 'None', 'None'])
+            logging.exception('\n\nException while filling recent donor list:\n')
+            self.donlist1.append(['Loading', 'Loading', 'Loading', 'Loading'])
             don1_con.close()
             return self.donlist1
 
@@ -953,7 +1137,6 @@ class Tundras_Tracker():
         try:
             don10_cur.execute("SELECT * FROM donations ORDER BY date desc, time desc limit 10")
             rows = don10_cur.fetchall()
-
             rownumber = 0
 
             while rownumber != 10:
@@ -963,8 +1146,8 @@ class Tundras_Tracker():
                 rownumber = rownumber + 1
         
         except IndexError:
-            logging.exception('Exception (There is probably no data in the donations DB, filling it with "None"):')
-            self.donlist10.append(['None', 'None', 'None', 'None'])
+            logging.exception('\n\nException while filling last 10 donors list (There is probably no data in the donations DB, filling it with "Loading"):\n')
+            self.donlist10.append(['Loading', 'Loading', 'Loading', 'Loading'])
 
         don10_con.close()
         return self.donlist10
@@ -1009,7 +1192,6 @@ class Tundras_Tracker():
         style = self.don1_clear_btn.modify_bg(gtk.STATE_NORMAL, None)
         self.don1_clear_btn.set_style(style)
         self.don1_clear_btn.set_label('Clear')
-
 
 
 
@@ -1061,16 +1243,14 @@ class Tundras_Tracker():
                 return False
                      
         except IndexError:
-            print "indexerror"
-            logging.exception('Exception (There is probably no data in the subscribers DB, filling it with "None"):')
-            self.sublist1.append(['None', 'None'])
+            logging.exception('\n\nException while filling recent subscriber list (There is probably no data in the subscribers DB, filling it with "Loading"):\n')
+            self.sublist1.append(['Loading', 'Loading'])
             sub1_con.close()
             return self.sublist1
 
         except UnboundLocalError:
-            print "unbounderror"
-            logging.exception('Exception:')
-            self.sublist1.append(['None', 'None'])
+            logging.exception('\n\nException while filling recent subscriber list:\n')
+            self.sublist1.append(['Loading', 'Loading'])
             sub1_con.close()
             return self.sublist1
         
@@ -1101,14 +1281,20 @@ class Tundras_Tracker():
                 rownumber = rownumber + 1
         
         except IndexError:
-            logging.exception('Exception (There is probably no data in the subscribers DB, filling it with "None"):')
-            self.sublist10.append(['None', 'None'])
+            logging.exception('\n\nException while filling last 10 subscribers list (There is probably no data in the subscribers DB, filling it with "Loading"):\n')
+            self.sublist10.append(['Loading', 'Loading'])
+
+        except UnboundLocalError:
+            logging.exception('\n\nException while filling last 10 subscribers list:\n')
+            self.sublist1.append(['Loading', 'Loading'])
+            sub1_con.close()
+            return self.sublist10
 
         sub10_con.close()
         return self.sublist10
         
 
-    ## Create Last 10 Subscribers TreeView ## 
+    ## Create Subscribers TreeView ## 
     def create_subscriber_columns(self, sub_treeView):
     
         rendererText = gtk.CellRendererText()
@@ -1135,6 +1321,199 @@ class Tundras_Tracker():
         style = self.sub1_clear_btn.modify_bg(gtk.STATE_NORMAL, None)
         self.sub1_clear_btn.set_style(style)
         self.sub1_clear_btn.set_label('Clear')
+
+    
+
+###### Top Donator List ######
+
+    ## Clear Top Donator Button ##
+    def clear_top_don_list(self, widget):
+        top_don_con = None
+        top_don_con = psycopg2.connect("dbname='%s' user='%s' host='%s' password='%s'" % (db_name, db_user, db_server, db_password))
+        top_don_cur = top_don_con.cursor()
+
+        self.top_don_list.clear()
+        
+        try:
+            top_don_cur.execute("DELETE FROM session_stats WHERE Type='top_donator'")
+            top_don_con.commit()
+            top_don_con.close()   
+        except:
+            logging.exception('\n\nException while reseting the top donor list (There is probably no data in the session_stats DB):\n')
+            top_don_con.close()
+        
+        return self.top_don_list
+
+
+    ## Create Top Donator List ##
+    def create_top_don_list(self):
+        self.top_don_list = gtk.ListStore(str, str)
+        return self.top_don_list
+
+
+    ## Fill Top Donator List ##
+    def fill_top_don_list(self):
+        top_don_con = None
+        top_don_con = psycopg2.connect("dbname='%s' user='%s' host='%s' password='%s'" % (db_name, db_user, db_server, db_password))
+        top_don_cur = top_don_con.cursor()
+
+        self.top_don_list.clear()
+
+        try:
+            top_don_cur.execute("SELECT Info, Amount FROM session_stats WHERE Type='top_donator'")
+            rows = top_don_cur.fetchall()
+
+            top_donator = rows[0][0]
+            top_donation_amount = rows[0][1]
+            top_donation_amount = '%.2f' % top_donation_amount
+
+            self.top_don_list.append([top_donator, top_donation_amount])
+            top_don_con.close()
+            return self.top_don_list
+                     
+        except IndexError:
+            # Disabling this log line because it will log an error everytime the list is empty and the refresh button is pushed #
+            # logging.exception('\n\nException while filling the top donor list (There is probably no data in the session_stats DB, filling it with "None"):\n')
+            self.top_don_list.append(['None', 'None'])
+            top_don_con.close()
+            return self.top_don_list
+
+        except:
+            logging.exception('\n\nException while filling the top donor list:\n')
+            self.top_don_list.append(['None', 'None'])
+            top_don_con.close()
+            return self.top_don_list
+
+
+    ## Create Top Donator TreeView ## 
+    def create_top_don_columns(self, top_don_treeView):
+    
+        rendererText = gtk.CellRendererText()
+        column = gtk.TreeViewColumn("User Name", rendererText, text=0)
+        column.set_sort_column_id(0)    
+        top_don_treeView.append_column(column)
+        
+        rendererText = gtk.CellRendererText()
+        column = gtk.TreeViewColumn("Amount", rendererText, text=1)
+        column.set_sort_column_id(1)
+        top_don_treeView.append_column(column)
+
+
+
+###### Lost Subscribers Window ######
+    def lost_subs_window(self, widget):
+
+        ## Set Title, Size, and Window Postion ##
+        lost_sub_window = gtk.Window()
+        lost_sub_window.set_destroy_with_parent(True)
+        lost_sub_window.set_title("Lost Subscribers")
+        lost_sub_window.set_size_request(350, 360)
+        lost_sub_window.set_position(gtk.WIN_POS_MOUSE)
+        lost_sub_window.set_border_width(0)
+
+
+    ## Clear Lost Subscribers Button ##
+        lost_subs_clear_btn = gtk.Button('Clear')
+        # self.lost_sub_clear_btn.connect("clicked", self.clear_lost_sub_list)
+        
+
+    ## Lost Subscriber List ##
+
+        # Make scrolling window 
+        lost_subs_list = gtk.ScrolledWindow()
+        lost_subs_list.set_size_request(400,300)
+        lost_subs_list.set_shadow_type(gtk.SHADOW_ETCHED_IN)
+        lost_subs_list.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
+
+        self.lost_subs_list = self.create_lost_subs_list()
+        self.fill_lost_subs_list()
+
+        # Make a TreeView
+        lost_subs_tree = gtk.TreeView(self.lost_subs_list)
+        lost_subs_tree.set_rules_hint(True)
+        lost_subs_tree.columns_autosize()
+        lost_subs_tree.set_grid_lines(gtk.TREE_VIEW_GRID_LINES_BOTH)
+        self.create_lost_subs_columns(lost_subs_tree)
+
+        # Add lost_subs_tree to the Scrolling Window
+        lost_subs_list.add(lost_subs_tree)
+
+
+    ## Lost Subscriber Frame ##
+        
+        # # Format Label
+        # lost_subs_label = gtk.Label()
+        # lost_subs_label.set_markup('<span size="20000"><b>Lost Subscribers</b></span>')
+        # lost_subs_label.set_use_markup(True)
+
+        # Create Frame
+        lost_subs_frame = gtk.Frame()
+        # lost_subs_frame.set_label_widget(lost_subs_label)
+        lost_subs_frame.set_label_align(0.5, 0.5)
+        lost_subs_vbox = gtk.VBox(False, 8)
+        lost_subs_vbox.set_border_width(10)
+        lost_subs_frame.add(lost_subs_vbox)
+
+        # Set Spacking between widgets
+        lost_subs_vbox.set_spacing(10)
+        
+        # Add Clear Button and TreeLists to Box
+        lost_subs_vbox.add(lost_subs_list)
+        lost_subs_vbox.add(lost_subs_clear_btn)
+        
+
+        # Horizontal Box inside Vertical Box for Sizing Purposes #
+        lost_subs_hbox = gtk.HBox(False, 8)
+        lost_subs_hbox.set_border_width(0)
+        lost_subs_hbox.pack_start(lost_subs_frame, True, True, 0)
+
+        lost_sub_window.add(lost_subs_hbox)
+        lost_sub_window.show_all()
+
+
+    def create_lost_subs_list(self):
+        self.lost_subs_list = gtk.ListStore(str, str, str)
+        return self.lost_subs_list
+
+    def fill_lost_subs_list(self):
+        lost_subs_con = None
+        lost_subs_con = psycopg2.connect("dbname='%s' user='%s' host='%s' password='%s'" % (db_name, db_user, db_server, db_password))
+        lost_subs_cur = lost_subs_con.cursor()
+        self.lost_subs_list.clear()
+
+        try:
+            lost_subs_cur.execute("SELECT username, date_subscribed, date_lost FROM lost_subscribers ORDER BY date_lost desc, time desc")
+            rows = lost_subs_cur.fetchall()
+
+            for item in rows:
+                self.lost_subs_list.append([item[0], str(item[1]), str(item[2])])
+        
+        except IndexError:
+            logging.exception('\n\nException while filling lost Subscribers list (There is probably no data in the lost subscribers DB, filling it with "Loading"):\n')
+            self.lost_subs_list.append(['Loading', 'Loading', 'Loading'])
+
+        lost_subs_con.close()
+        return self.lost_subs_list
+
+        
+
+    def create_lost_subs_columns(self, lost_subs_treeView):
+    
+        rendererText = gtk.CellRendererText()
+        column = gtk.TreeViewColumn("User Name", rendererText, text=0)
+        column.set_sort_column_id(0)    
+        lost_subs_treeView.append_column(column)
+        
+        rendererText = gtk.CellRendererText()
+        column = gtk.TreeViewColumn("Date Subscribed", rendererText, text=1)
+        column.set_sort_column_id(1)
+        lost_subs_treeView.append_column(column)
+
+        rendererText = gtk.CellRendererText()
+        rendererText.props.wrap_width = 240
+        column = gtk.TreeViewColumn("Date Lost", rendererText, text=2)
+        column.set_sort_column_id(2)
+        lost_subs_treeView.append_column(column)
 
 
 
