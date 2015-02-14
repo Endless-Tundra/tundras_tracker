@@ -164,7 +164,7 @@ class Tundras_Tracker():
         ## Set Title, Size, and Window Postion ##
         main_window = gtk.Window(gtk.WINDOW_TOPLEVEL)
         main_window.set_title("Tundra's Tracker")
-        main_window.set_size_request(1300, 680)
+        main_window.set_size_request(1050, 680)
         main_window.set_position(gtk.WIN_POS_MOUSE)
         main_window.set_border_width(0)
         # main_window.modify_font(pango.FontDescription('Sans Bold Not-Rotated'))
@@ -199,7 +199,7 @@ class Tundras_Tracker():
 
         # Frame Label #
         load_label = gtk.Label()
-        load_label.set_markup('<span size="20000"><b>Load</b></span>')
+        load_label.set_markup('<span size="15000"><b>Load</b></span>')
         load_label.set_use_markup(True)
 
         # Create Frame #
@@ -234,7 +234,7 @@ class Tundras_Tracker():
         self.sub_current.set_text("Loading...")
 
         sub_cur_label = gtk.Label()
-        sub_cur_label.set_markup('<span size="13500"><b>Total Subscribers</b></span>')
+        sub_cur_label.set_markup('<span size="11000"><b>Total Subscribers</b></span>')
         sub_cur_label.set_use_markup(True)
 
         sub_cur_frame = gtk.Frame()
@@ -258,7 +258,7 @@ class Tundras_Tracker():
         self.follow_cur.set_text("Loading...")
 
         follow_cur_label = gtk.Label()
-        follow_cur_label.set_markup('<span size="13500"><b>Total Followers</b></span>')
+        follow_cur_label.set_markup('<span size="11000"><b>Total Followers</b></span>')
         follow_cur_label.set_use_markup(True)
 
         follow_cur_frame = gtk.Frame()
@@ -282,7 +282,7 @@ class Tundras_Tracker():
         self.viewers_cur.set_text("Loading...")
 
         viewers_cur_label = gtk.Label()
-        viewers_cur_label.set_markup('<span size="13500"><b>Viewer Count</b></span>')
+        viewers_cur_label.set_markup('<span size="11000"><b>Viewer Count</b></span>')
         viewers_cur_label.set_use_markup(True)
 
         # Make Frame #
@@ -304,7 +304,7 @@ class Tundras_Tracker():
 
         # Make Label # 
         top_don_label = gtk.Label()
-        top_don_label.set_markup('<span size="13500"><b>Top Donator</b></span>')
+        top_don_label.set_markup('<span size="15000"><b>Top Donator</b></span>')
         top_don_label.set_use_markup(True)
         
         top_donator = "Loading..."
@@ -332,7 +332,7 @@ class Tundras_Tracker():
 
         # Frame Label #
         stats_label = gtk.Label()
-        stats_label.set_markup('<span size="20000"><b>Stats</b></span>')
+        stats_label.set_markup('<span size="15000"><b>Stats</b></span>')
         stats_label.set_use_markup(True)
 
         # Create Frame #
@@ -345,7 +345,7 @@ class Tundras_Tracker():
 
         # Set the Appearance of the Button Box #
         stats_vbox.set_layout(gtk.BUTTONBOX_START)
-        stats_vbox.set_spacing(20)
+        stats_vbox.set_spacing(10)
 
         # Add the Buttons #
         stats_vbox.add(sub_cur_hbox)
@@ -373,7 +373,7 @@ class Tundras_Tracker():
 
         # Frame Label #
         data_insights_label = gtk.Label()
-        data_insights_label.set_markup('<span size="20000"><b>DI</b></span>')
+        data_insights_label.set_markup('<span size="15000"><b>DI</b></span>')
         data_insights_label.set_use_markup(True)
 
         # Create Frame #
@@ -432,7 +432,7 @@ class Tundras_Tracker():
 
         # Frame Label
         don1_label = gtk.Label()
-        don1_label.set_markup('<span size="15000"><b>Most Recent Donor</b></span>')
+        don1_label.set_markup('<span size="12000"><b>Most Recent Donor</b></span>')
         don1_label.set_use_markup(True)
 
         # Create Frame
@@ -457,7 +457,7 @@ class Tundras_Tracker():
 
         # Make scrolling window #
         don10_list = gtk.ScrolledWindow()
-        don10_list.set_size_request(490,350)
+        don10_list.set_size_request(490,364)
         don10_list.set_shadow_type(gtk.SHADOW_ETCHED_IN)
         don10_list.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
 
@@ -479,7 +479,7 @@ class Tundras_Tracker():
 
         # Frame Label #
         don10_label = gtk.Label()
-        don10_label.set_markup('<span size="15000"><b>Last 10 Donors</b></span>')
+        don10_label.set_markup('<span size="12000"><b>Last 10 Donors</b></span>')
         don10_label.set_use_markup(True)
 
         # Create Frame #
@@ -502,7 +502,7 @@ class Tundras_Tracker():
         
         # Format Label
         don_label = gtk.Label()
-        don_label.set_markup('<span size="20000"><b>Donations</b></span>')
+        don_label.set_markup('<span size="15000"><b>Donations</b></span>')
         don_label.set_use_markup(True)
 
         # Create Frame
@@ -514,7 +514,7 @@ class Tundras_Tracker():
         don_frame.add(don_vbox)
 
         # Set Spacking between widgets
-        don_vbox.set_spacing(40)
+        don_vbox.set_spacing(25)
         
         # Add Clear Button and TreeLists to Box
         don_vbox.add(don1_hbox)
@@ -561,7 +561,7 @@ class Tundras_Tracker():
 
         # Format Label
         sub1_label = gtk.Label()
-        sub1_label.set_markup('<span size="15000"><b>Most Recent Subscriber</b></span>')
+        sub1_label.set_markup('<span size="12000"><b>Most Recent Subscriber</b></span>')
         sub1_label.set_use_markup(True)
 
         # Create Frame
@@ -607,7 +607,7 @@ class Tundras_Tracker():
 
         # Format Label #
         sub10_label = gtk.Label()
-        sub10_label.set_markup('<span size="15000"><b>Last 10 Subscribers</b></span>')
+        sub10_label.set_markup('<span size="12000"><b>Last 10 Subscribers</b></span>')
         sub10_label.set_use_markup(True)
 
         # Create Frame #
@@ -646,7 +646,7 @@ class Tundras_Tracker():
 
         # Make Label # 
         sub_goal_label = gtk.Label()
-        sub_goal_label.set_markup('<span size="15000"><b>Sub Goal</b></span>')
+        sub_goal_label.set_markup('<span size="12000"><b>Sub Goal</b></span>')
         sub_goal_label.set_use_markup(True)
 
 
@@ -690,7 +690,7 @@ class Tundras_Tracker():
         
         # Format Label #
         sub_label = gtk.Label()
-        sub_label.set_markup('<span size="20000"><b>Subscribers</b></span>')
+        sub_label.set_markup('<span size="15000"><b>Subscribers</b></span>')
         sub_label.set_use_markup(True)
 
         # Create Frame #
@@ -702,7 +702,7 @@ class Tundras_Tracker():
         sub_frame.add(sub_vbox)
 
         # Set Spacking between widgets #
-        sub_vbox.set_spacing(40)
+        sub_vbox.set_spacing(25)
         
         # Add Clear Button and TreeLists to Box #
         sub_vbox.add(sub1_hbox)
@@ -748,7 +748,7 @@ class Tundras_Tracker():
 
         # Format Label
         top_don_label = gtk.Label()
-        top_don_label.set_markup('<span size="18000"><b>Top Donator</b></span>')
+        top_don_label.set_markup('<span size="13500"><b>Top Donator</b></span>')
         top_don_label.set_use_markup(True)
 
         # Create Frame
@@ -771,9 +771,9 @@ class Tundras_Tracker():
 ###### Create Fixed Container so you can position all the frames where you want them ######
         fixed = gtk.Fixed()
         fixed.put(load_hbox, 25, 10)
-        fixed.put(stats_hbox, 25, 150)
-        fixed.put(top_don_hbox, 10, 410)
-        fixed.put(data_insights_hbox, 25, 560)
+        fixed.put(stats_hbox, 25, 140)
+        fixed.put(top_don_hbox, 10, 415)
+        fixed.put(data_insights_hbox, 25, 570)
         fixed.put(don_hbox, 200, 10)
         fixed.put(sub_hbox, 750, 10)
 
@@ -864,10 +864,10 @@ class Tundras_Tracker():
         try:
             twitch_sub_count_api_url = 'https://api.twitch.tv/kraken/channels/' + twitch_username + '/subscriptions?direction=desc&limit=1&offset=0&oauth_token=' + twitch_oauth_token
             twitch_sub_count = requests.get(twitch_sub_count_api_url, timeout=5).json()
-            self.sub_current.set_markup('<span size="18000">' + str(twitch_sub_count['_total']) + '</span>')
+            self.sub_current.set_markup('<span size="13000">' + str(twitch_sub_count['_total']) + '</span>')
         except:
             logging.exception('\n\nCant Connect to Twitch to get current Sub Count:\n\n')
-            self.sub_current.set_markup('<span size="15000">Twitch :(</span>')
+            self.sub_current.set_markup('<span size="11000">Twitch :(</span>')
 
         self.sub_current.set_use_markup(True)
         print "Sub Stats Updated"
@@ -889,10 +889,10 @@ class Tundras_Tracker():
             if int(twitch_follow_count['_total']) == 0:
                 return True    
             else:
-                self.follow_cur.set_text('<span size="18000">' + str(twitch_follow_count['_total']) + '</span>')
+                self.follow_cur.set_text('<span size="13000">' + str(twitch_follow_count['_total']) + '</span>')
         except:
             logging.exception('\n\nCant Connect to Twitch to get current Follower Count:\n\n')
-            self.follow_cur.set_markup('<span size="15000">Twitch :(</span>')
+            self.follow_cur.set_markup('<span size="11000">Twitch :(</span>')
 
         self.follow_cur.set_use_markup(True)
         print "Followers Updated"
@@ -911,9 +911,9 @@ class Tundras_Tracker():
         try:
             twitch_viewers_count_api_url = 'https://api.twitch.tv/kraken/streams/' + twitch_username
             twitch_viewers_count = json.load(urllib2.urlopen(twitch_viewers_count_api_url))
-            self.viewers_cur.set_markup('<span size="18000">' + str(twitch_viewers_count['stream']['viewers']) + '</span>')
+            self.viewers_cur.set_markup('<span size="13000">' + str(twitch_viewers_count['stream']['viewers']) + '</span>')
         except:
-            self.viewers_cur.set_markup('<span size="14000">Not Streaming</span>')
+            self.viewers_cur.set_markup('<span size="11000">Not Streaming</span>')
 
         self.viewers_cur.set_use_markup(True)
         print "Viewers Updated"
