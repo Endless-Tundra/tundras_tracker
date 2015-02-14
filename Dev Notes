@@ -1,0 +1,34 @@
+# Stuff you need to develop #
+install python 2.7
+
+open admin command prompt:
+pip install requests
+
+
+install psycopg2 (It gives you a runtime error but seems to work)
+http://www.stickpeople.com/projects/python/win-psycopg/
+
+install pygtk all-in-one installer:
+http://ftp.gnome.org/pub/GNOME/binaries/win32/pygtk/2.24/
+
+
+# Build with pyinstaller on windows #
+C:\Users\wturner\Desktop\tracker>pyinstaller --additional-hooks-dir=hooks/ tundras_tracker.py
+
+
+
+
+# A different way to send header info then what I am currently using #
+# ## PART ASA ADDED ##
+# twitch_url = "https://api.twitch.tv/kraken/"+twitch_user
+
+# send_headers = {
+#    "Accept": "application/vnd.twitchtv.v2+json",
+#    "Authorization": "OAuth "+twitch_access_token
+# }
+
+# request_data = urllib2.Request(url, None, send_headers)
+# twitch_data = json.load(urllib2.urlopen(request_data))
+# print json.dumps(twitch_data, sort_keys=True, indent=4) 
+
+# ## END PART ASA ADDED ##
