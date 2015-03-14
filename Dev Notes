@@ -1,11 +1,15 @@
 # Stuff you need to develop #
 install python 2.7
 
-open admin command prompt:
+Install Requests Module:
+open admin command prompt
 pip install requests
 
+(Must use requests 2.5.1 or earlier to use it with pyinstaller)
+http://stackoverflow.com/questions/28775276/pyinstaller-error-importerror-no-module-named-requests-packages-chardet-sys
 
-install psycopg2 (It gives you a runtime error but seems to work)
+
+install psycopg2 (It gives you a runtime error on 64bit windows but seems to work)
 http://www.stickpeople.com/projects/python/win-psycopg/
 
 install pygtk all-in-one installer:
@@ -13,6 +17,11 @@ http://ftp.gnome.org/pub/GNOME/binaries/win32/pygtk/2.24/
 
 
 # Build with pyinstaller on windows #
+
+Install:
+https://www.microsoft.com/en-us/download/details.aspx?id=29
+(If you don't you will get a bunch of dll not found errors when building)
+
 C:\Users\wturner\Desktop\tracker>pyinstaller --additional-hooks-dir=hooks/ tundras_tracker.py
 
 
