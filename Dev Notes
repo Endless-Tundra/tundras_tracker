@@ -41,3 +41,11 @@ C:\Users\wturner\Desktop\tracker>pyinstaller --additional-hooks-dir=hooks/ tundr
 # print json.dumps(twitch_data, sort_keys=True, indent=4) 
 
 # ## END PART ASA ADDED ##
+
+
+Tundra's Tracker API Keys:
+Client Secret: mt8nxqgp5btmc75nd4q90qddnvj27or
+Client ID: bee7enfdt4km8c727l7cnqyctuylc5v
+
+Authentication UI (The user goes here, authorizes, and then gets the access token from the resulting URL):
+https://api.twitch.tv/kraken/oauth2/authorize?response_type=token&client_id=bee7enfdt4km8c727l7cnqyctuylc5v&redirect_uri=http://localhost&scope=channel_read+channel_editor+channel_subscriptions

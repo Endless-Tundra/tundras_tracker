@@ -3,9 +3,10 @@
 # Copyright © 2015 Warren Turner
 # Licensed under the LGPL version 2.1 or later
 # Tundra's Tracker for Twitch
-# Version 0.8.1
+# Version 0.8.2
 
 import os
+# import easygui
 import requests
 import json
 import psycopg2
@@ -21,6 +22,7 @@ import threading
 import urllib2
 import pango
 import traceback
+# import easygui
 
 ## Set Global Variables ##
 
@@ -51,13 +53,14 @@ try:
     try:
         configParser.read(configFilePath)
     except:
-        logging.exception('\nCould not find Config File.  Make sure that it is named twitch_tracker.conf and located in the same folder as the application.\n\n')
+        logging.exception('\nCould not find Config File.  Make sure that it is named twitch_tracker.conf and located in the same folder as the application.\n\n\n')
+        # easygui.msgbox("Could not find Config File.  Make sure that it is named twitch_tracker.conf and located in the same folder as the application.")
         sys.exit(2)
 
     ## Set Logging ##
     log_file = configParser.get('logging', 'log_file')
     log_level = configParser.get('logging', 'log_level')
-    logging.basicConfig(filename=log_file,level=log_level)
+    logging.basicConfig(format='\n\n%(asctime)s\n---------------------- %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', filename=log_file, level=log_level)
 
     ## Output Path for OBS Text Files ##
     output_path = configParser.get('output_path', 'output_path')
@@ -100,7 +103,7 @@ try:
 
 except:
     logging.basicConfig(filename='error.log',level='DEBUG')
-    logging.exception('\n\nMissing a section in the config file.  Read the below error to figure out which one.\n\n')
+    logging.exception('\nMissing a section in the config file.  Read the below error to figure out which one.\n\n\n')
     sys.exit(2)
 
 
@@ -111,7 +114,7 @@ try:
     cur = con.cursor()
 
 except:
-    logging.exception('\n\nCould not connect to the database specified\n\n')
+    logging.exception('\nCould not connect to the database specified\n\n\n')
 
 
 
@@ -161,7 +164,7 @@ try:
     con.close()
 
 except:
-    logging.exception('\n\nError Making the needed tables in the DB\n\n')
+    logging.exception('\nError Making the needed tables in the DB\n\n\n')
 
 
 
@@ -186,6 +189,13 @@ try:
         twitch_sad_text = 11000
         not_streaming_text = 11000
 
+        # The below positions/text sizes are used instead if you want the "Recalculate Dononation Totals" Button
+        # stats_box_position_y = 177
+        # topdon_box_position_y = 445
+        # data_insights_box_position_y = 600
+        # twitch_sad_text = "11000"
+        # not_streaming_text = "11000"
+
     elif os.name == "posix":
         main_window_length = 1300
         frame_label_size_large = "20000"
@@ -200,6 +210,13 @@ try:
         data_insights_box_position_y = 560
         twitch_sad_text = 15000
         not_streaming_text = 14000
+
+        # The below positions/text sizes are used instead if you want the "Recalculate Dononation Totals" Button
+        # stats_box_position_y = 185
+        # topdon_box_position_y = 440
+        # data_insights_box_position_y = 590
+        # twitch_sad_text = "15000"
+        # not_streaming_text = "14000"
 
 
     class Tundras_Tracker():
@@ -242,6 +259,21 @@ try:
             self.reload_sub_btn.connect("clicked", self.get_current_sub_count)
 
 
+        ## Recalculatione Donation Totals on Startup ##
+            self.reload_don_totals()
+
+
+        ## Recalculate Donation Totals Button ##
+        ## I'm not sure it is actually useful to have a button that recalculates the donation totals because it would only need to be done in rare occurences so I'm disabling it.
+        ## (like when there were rows in the donations table before the total donations table was being updated)
+            # self.reload_don_totals_btn = gtk.Button("Recalculate Totals")
+            # self.reload_don_totals_btn.set_size_request(120,25)
+            # self.reload_don_totals_btn.set_tooltip_text("Recalculate donation totals for each username.")
+
+            # self.reload_don_totals_btn.connect("clicked", self.reload_don_totals)
+            # self.reload_don_totals_btn.connect("clicked", self.listfill_run)
+
+
         ## Load Section Frame ##
 
             # Frame Label #
@@ -263,6 +295,7 @@ try:
 
             # Add the Buttons #
             load_vbox.add(refresh_btn)
+            # load_vbox.add(self.reload_don_totals_btn)
             load_vbox.add(self.reload_sub_btn)
             
             # Horizontal Box inside Vertical Box for Sizing Purposes #
@@ -912,7 +945,7 @@ try:
                 twitch_sub_count = requests.get(twitch_sub_count_api_url, timeout=5).json()
                 self.sub_current.set_markup('<span size="' + topdon_label_size + '">' + str(twitch_sub_count['_total']) + '</span>')
             except:
-                logging.exception('\n\nCant Connect to Twitch to get current Sub Count:\n\n')
+                logging.exception('\nCant Connect to Twitch to get current Sub Count\n\n\n')
                 self.sub_current.set_markup('<span size="' + twitch_sad_text + '">Twitch :(</span>')
 
             self.sub_current.set_use_markup(True)
@@ -937,7 +970,7 @@ try:
                 else:
                     self.follow_cur.set_text('<span size="' + topdon_label_size + '">' + str(twitch_follow_count['_total']) + '</span>')
             except:
-                logging.exception('\n\nCant Connect to Twitch to get current Follower Count:\n\n')
+                logging.exception('\nCant Connect to Twitch to get current Follower Count\n\n\n')
                 self.follow_cur.set_markup('<span size="' + twitch_sad_text + '">Twitch :(</span>')
 
             self.follow_cur.set_use_markup(True)
@@ -960,7 +993,7 @@ try:
                 twitch_viewers_count = requests.get(twitch_viewers_count_api_url, timeout=5).json()
                 self.viewers_cur.set_markup('<span size="' + topdon_label_size + '">' + str(twitch_viewers_count['stream']['viewers']) + '</span>')
             except:
-                logging.exception('I dont understand?')
+                #logging.exception('I dont understand?')
                 self.viewers_cur.set_markup('<span size="'+ not_streaming_text + '">Not Streaming</span>')
 
             self.viewers_cur.set_use_markup(True)
@@ -998,7 +1031,7 @@ try:
                     streamtip_api_url = 'https://streamtip.com/api/tips?direction=desc&sort_by=date&limit=100&offset=' + str(offset) + '&client_id=' + streamtip_client_id + '&access_token=' + streamtip_access_token
                     streamtip_donations = requests.get(streamtip_api_url, timeout=5).json()
                 except:
-                    logging.exception('\n\nError connecting to StreamTip:\n\n')
+                    logging.exception('\nError connecting to StreamTip\n\n\n')
                     update_running = 0
                     return True
 
@@ -1015,7 +1048,7 @@ try:
                         streamtip_api_url = 'https://streamtip.com/api/tips?direction=desc&sort_by=date&limit=100&offset=' + str(offset) + '&client_id=' + streamtip_client_id + '&access_token=' + streamtip_access_token
                         streamtip_donations = requests.get(streamtip_api_url, timeout=5).json()
                     except:
-                        logging.exception('\n\nError connecting to StreamTip:\n\n')
+                        logging.exception('\nError connecting to StreamTip\n\n\n')
                         update_running = 0
                         check_for_updates_con.rollback()
                         check_for_updates_con.close()
@@ -1039,15 +1072,17 @@ try:
                         note = re.sub(r'[^\x00-\x7F]+','[?]', note)
                         try:
                             check_for_updates_cur.execute("INSERT INTO donations (Username, Amount, Message, Transaction_Id, Date, Time) VALUES ('%s',%f,'%s','%s','%s','%s')" % (item['username'], float(item['amount']), note, item['transactionId'], date, time))
+                            check_for_updates_cur.execute("DELETE FROM total_donations WHERE LOWER(username) = LOWER('%s')" % (item['username']))
+                            check_for_updates_cur.execute("INSERT INTO total_donations (username, amount) SELECT LOWER(username), SUM(amount) FROM donations WHERE username = '%s' GROUP BY LOWER(username)" % (item['username']))
                         except UnicodeDecodeError:
-                            logging.exception('\n\nUnicode Exception (This transaction was loaded into the DB but the note was removed):\n')
+                            logging.exception('\nUnicode Exception (This transaction was loaded into the DB but the note was removed)\n\n')
                             error_info = '\n\nTransaction Info\nUsername: ' + item['username'] + '\nAmount: ' + item['amount'] + '\nNote: ' + item['note'] + '\nTransation_Id: ' + item['transactionId'] + '\nDate: ' + date + '\nTime: ' + time + '\n'
                             logging.error(error_info)
                             note = 'Sorry something about the message caused an error so it couldnt be saved :(  But Carci still loves you!'
                             check_for_updates_cur.execute("INSERT INTO donations (Username, Amount, Message, Transaction_Id, Date, Time) VALUES ('%s',%f,'%s','%s','%s','%s')" % (item['username'], float(item['amount']), note, item['transactionId'], date, time))
                         except:
                             # Need to write to a log file here
-                            logging.exception('\n\nUnknown Exception (This transaction was not loaded into the DB):\n')
+                            logging.exception('\nUnknown Exception (This transaction was not loaded into the DB)\n\n')
                             error_info = '\n\nTransaction Info\nUsername: ' + item['username'] + '\nAmount: ' + item['amount'] + '\nNote: ' + item['note'] + '\nTransation_Id: ' + item['transactionId'] + '\nDate: ' + date + '\nTime: ' + time + '\n'
                             logging.error(error_info)
 
@@ -1085,7 +1120,7 @@ try:
                         twitch_subscribers_api_url = 'https://api.twitch.tv/kraken/channels/' + twitch_username + '/subscriptions?direction=desc&limit=100&offset=' + str(offset) + '&oauth_token=' + twitch_oauth_token
                         twitch_subscribers = requests.get(twitch_subscribers_api_url, timeout=5).json()                   
                     except:
-                        logging.exception('\n\nError connecting to Twitch to Update Subscribers:\n\n')
+                        logging.exception('\nError connecting to Twitch to Update Subscribers\n\n\n')
                         update_running = 0
                         check_for_updates_con.rollback()
                         check_for_updates_con.close()
@@ -1103,7 +1138,7 @@ try:
                             check_for_updates_cur.execute("UPDATE session_stats SET Amount=Amount+1 WHERE Type='sub_goal'")
                         except:
                             # Need to write to a log file here
-                            logging.exception('\n\nUnknown Exception (This subscription was not loaded into the DB):\n')
+                            logging.exception('\nUnknown Exception (This subscription was not loaded into the DB)\n\n')
                             error_info = '\n\nTransaction Info\nUsername: ' + item['user']['display_name'] + '\nDate: ' + date + '\n' + time + '\n'
                             logging.error(error_info)
 
@@ -1119,7 +1154,7 @@ try:
                 update_running = 0
 
             except:
-                logging.exception('\n\nSome sort of exception occurred while checking for updates:/n')
+                logging.exception('\nSome sort of exception occurred while checking for updates\n')
                 update_running = 0
 
 
@@ -1157,7 +1192,7 @@ try:
                     twitch_subscribers_api_url = 'https://api.twitch.tv/kraken/channels/' + twitch_username + '/subscriptions?direction=desc&limit=100&offset=' + str(offset) + '&oauth_token=' + twitch_oauth_token
                     twitch_subscribers = requests.get(twitch_subscribers_api_url, timeout=5).json()
                 except:
-                    logging.exception('\n\nError connecting to Twitch to Update Subscribers:\n\n')
+                    logging.exception('\nError connecting to Twitch to Update Subscribers\n\n\n')
                     update_running = 0
                     return True
                 for item in twitch_subscribers['subscriptions']:
@@ -1166,7 +1201,7 @@ try:
                     try:
                         reload_subs_cur.execute("INSERT INTO subscribers (Username, Date_Subscribed, Time) VALUES ('%s','%s','%s')" % (item['user']['display_name'], date, time))
                     except:
-                        logging.exception('\n\nUnknown Exception (This subscription was not loaded into the DB):\n')
+                        logging.exception('\nUnknown Exception (This subscription was not loaded into the DB)\n\n')
                         error_info = '\n\nTransaction Info\nUsername: ' + item['user']['display_name'] + '\nDate: ' + date + '\n' + time + '\n'
                         logging.error(error_info)
                 offset = offset + 100
@@ -1176,8 +1211,42 @@ try:
             reload_subs_cur.execute("INSERT INTO lost_subscribers SELECT username, date_subscribed FROM subscribers where username not in (SELECT username FROM previous_subscribers)")
             reload_subs_cur.execute("DROP TABLE previous_subscribers")
             reload_subs_con.commit()
+            reload_subs_con.close()
             update_running = 0
             self.reload_sub_btn.set_label("Reload Subscribers")
+
+
+
+    ###### Recalculate Donation Totals Button ######
+        def reload_don_totals(self):
+            reload_don_totals_con = None
+            reload_don_totals_con = psycopg2.connect("dbname='%s' user='%s' host='%s' password='%s'" % (db_name, db_user, db_server, db_password))
+            reload_don_totals_cur = reload_don_totals_con.cursor()
+            global update_running
+
+            if update_running == 1:
+                print "Recalculating Donation Totals is already running"
+                return False
+
+            print "Recalculating all Donation Totals"
+            # self.reload_don_totals_btn.set_label("Recalculating...")
+
+            while gtk.events_pending():
+                gtk.main_iteration()  
+            # Move existing data to new table #
+            try:
+                reload_don_totals_cur.execute("DROP TABLE total_donations")
+            except:
+                reload_don_totals_con.rollback()
+
+            reload_don_totals_cur.execute("CREATE TABLE total_donations(Username varchar(100), Subscriber_Status varchar(30), Amount REAL)")
+            reload_don_totals_cur.execute("INSERT INTO total_donations (username, amount) SELECT LOWER(username), SUM(amount) FROM donations GROUP BY LOWER(username)")
+
+            ## Pushes Changes to DB ##
+            reload_don_totals_con.commit()
+            reload_don_totals_con.close()
+            update_running = 0
+            # self.reload_don_totals_btn.set_label("Recalculate Totals")
 
 
 
@@ -1201,6 +1270,10 @@ try:
             don1_con = psycopg2.connect("dbname='%s' user='%s' host='%s' password='%s'" % (db_name, db_user, db_server, db_password))
             don1_cur = don1_con.cursor()
 
+            total_don_con = None
+            total_don_con = psycopg2.connect("dbname='%s' user='%s' host='%s' password='%s'" % (db_name, db_user, db_server, db_password))
+            total_don_cur = total_don_con.cursor()
+
             self.donlist1.clear()
             global don_old_record
             global don_clear_status
@@ -1213,40 +1286,55 @@ try:
                 amount = '%.2f' % amount
                 transactionid = rows[0][4]
 
+                # Get total donated by that username #
+                total_don_cur.execute("SELECT amount FROM total_donations WHERE username = LOWER('%s')" % (rows[0][0]))
+                total_don_rows = total_don_cur.fetchall()
+                
+                try:
+                    total_don_amount = total_don_rows[0][0]
+                    total_don_amount = '%.2f' % total_don_amount
+                except:
+                    total_don_amount = 'Unknown (Restart the App to Fix This)'
+
                 if transactionid != don_old_record:
-                    self.donlist1.append([rows[0][0], amount, rows[0][3], rows[0][0]])
+                    self.donlist1.append([rows[0][0], amount, rows[0][3], total_don_amount])
                     don_old_record = rows[0][4]
                     don_clear_status = 0
                     self.donor_color()
                     don1_con.close()
+                    total_don_con.close()
                     return self.donlist1
 
                 elif don_clear_status == 0:
-                    self.donlist1.append([rows[0][0], amount, rows[0][3], rows[0][0]])
+                    self.donlist1.append([rows[0][0], amount, rows[0][3], total_don_amount])
                     don1_con.close()
+                    total_don_con.close()
                     return self.donlist1
 
                 else:
                     don1_con.close()
+                    total_don_con.close()
                     return False
                          
             except IndexError:
-                logging.exception('\n\nException while filling recent donor list (There is probably no data in the donations DB, filling it with "Loading"):\n')
+                logging.exception('\nException while filling recent donor list (There is probably no data in the donations DB, filling it with "Loading")\n\n')
                 self.donlist1.append(['Loading', 'Loading', 'Loading', 'Loading'])
                 don1_con.close()
+                total_don_con.close()
                 return self.donlist1
 
-            except UnboundLocalError:
-                logging.exception('\n\nException while filling recent donor list:\n')
+            except:
+                logging.exception('\nException while filling recent donor list\n\n')
                 self.donlist1.append(['Loading', 'Loading', 'Loading', 'Loading'])
                 don1_con.close()
+                total_don_con.close()
                 return self.donlist1
-
 
 
         def create_last_10_donor_list(self):
             self.donlist10 = gtk.ListStore(str, str, str, str)
             return self.donlist10
+
 
         def fill_last_10_donor_list(self):
             don10_con = None
@@ -1254,26 +1342,41 @@ try:
             don10_cur = don10_con.cursor()
             self.donlist10.clear()
 
+            total_don10_con = None
+            total_don10_con = psycopg2.connect("dbname='%s' user='%s' host='%s' password='%s'" % (db_name, db_user, db_server, db_password))
+            total_don10_cur = total_don10_con.cursor()
+
             try:
                 don10_cur.execute("SELECT * FROM donations ORDER BY date desc, time desc limit 10")
                 rows = don10_cur.fetchall()
                 rownumber = 0
 
                 while rownumber != 10:
+                    # Get total donated by that username #
+                    total_don10_cur.execute("SELECT amount FROM total_donations WHERE username = LOWER('%s')" % (rows[rownumber][0]))
+                    total_don10_rows = total_don10_cur.fetchall()
+                
+                    try:
+                        total_don10_amount = total_don10_rows[0][0]
+                        total_don10_amount = '%.2f' % total_don10_amount
+                    except:
+                        total_don10_amount = 'Unknown (Restart the App to Fix This)'
+
+                    # Populate the List #
                     amount = rows[rownumber][2]
                     amount = '%.2f' % amount
-                    self.donlist10.append([rows[rownumber][0], amount, rows[rownumber][3], '0'])
+                    self.donlist10.append([rows[rownumber][0], amount, rows[rownumber][3], total_don10_amount])
                     rownumber = rownumber + 1
             
             except IndexError:
-                logging.exception('\n\nException while filling last 10 donors list (There is probably no data in the donations DB, filling it with "Loading"):\n')
+                logging.exception('\nException while filling last 10 donors list (There is probably no data in the donations DB, filling it with "Loading")\n\n')
                 self.donlist10.append(['Loading', 'Loading', 'Loading', 'Loading'])
 
             don10_con.close()
+            total_don10_con.close()
             return self.donlist10
 
             
-
         def create_donation_columns(self, don_treeView):
         
             rendererText = gtk.CellRendererText()
@@ -1292,14 +1395,15 @@ try:
             rendererText.props.wrap_mode = gtk.WRAP_WORD
             column = gtk.TreeViewColumn("Donation Comment", rendererText, text=2)
             column.set_sort_column_id(2)
+            column.set_min_width(260)
             don_treeView.append_column(column)
 
             rendererText = gtk.CellRendererText()
             column = gtk.TreeViewColumn("Total", rendererText, text=3)
             rendererText.set_property('xalign', 1.0)
             column.set_sort_column_id(3)
+            column.set_sizing(gtk.TREE_VIEW_COLUMN_AUTOSIZE)
             don_treeView.append_column(column)
-
 
 
         def donor_color(self):
@@ -1370,13 +1474,13 @@ try:
                     return False
                          
             except IndexError:
-                logging.exception('\n\nException while filling recent subscriber list (There is probably no data in the subscribers DB, filling it with "Loading"):\n')
+                logging.exception('\nException while filling recent subscriber list (There is probably no data in the subscribers DB, filling it with "Loading")\n\n')
                 self.sublist1.append(['Loading', 'Loading'])
                 sub1_con.close()
                 return self.sublist1
 
             except UnboundLocalError:
-                logging.exception('\n\nException while filling recent subscriber list:\n')
+                logging.exception('\nException while filling recent subscriber list\n\n')
                 self.sublist1.append(['Loading', 'Loading'])
                 sub1_con.close()
                 return self.sublist1
@@ -1408,11 +1512,11 @@ try:
                     rownumber = rownumber + 1
             
             except IndexError:
-                logging.exception('\n\nException while filling last 10 subscribers list (There is probably no data in the subscribers DB, filling it with "Loading"):\n')
+                logging.exception('\nException while filling last 10 subscribers list (There is probably no data in the subscribers DB, filling it with "Loading")\n\n')
                 self.sublist10.append(['Loading', 'Loading'])
 
             except UnboundLocalError:
-                logging.exception('\n\nException while filling last 10 subscribers list:\n')
+                logging.exception('\nException while filling last 10 subscribers list\n\n')
                 self.sublist1.append(['Loading', 'Loading'])
                 sub1_con.close()
                 return self.sublist10
@@ -1465,7 +1569,7 @@ try:
                 sub_goal_con.commit()
                 sub_goal_con.close()   
             except:
-                logging.exception('\n\nException while reseting the subscriber goal (There is probably no data in the session_stats DB):\n')
+                logging.exception('\nException while reseting the subscriber goal (There is probably no data in the session_stats DB)\n\n')
                 sub_goal_con.close()
             
             self.sub_goal_current = "0"
@@ -1536,13 +1640,13 @@ try:
                          
             except IndexError:
                 # Disabling this log line because it will log an error everytime the list is empty and the refresh button is pushed #
-                # logging.exception('\n\nException while reseting the subscriber goal (There is probably no data in the session_stats DB, filling it with "None"):\n')
+                # logging.exception('\nException while reseting the subscriber goal (There is probably no data in the session_stats DB, filling it with "None")\n\n')
                 self.sub_goal_current = "0"
                 self.sub_goal_objective = "0"
                 sub_goal_con.close()
 
             except:
-                logging.exception('\n\nException while filling the top donor list:\n')
+                logging.exception('\nException while filling the top donor list\n\n')
                 self.sub_goal_current = "0"
                 self.sub_goal_objective = "0"
                 sub_goal_con.close()
@@ -1573,7 +1677,7 @@ try:
                 top_don_con.commit()
                 top_don_con.close()   
             except:
-                logging.exception('\n\nException while reseting the top donor list (There is probably no data in the session_stats DB):\n')
+                logging.exception('\nException while reseting the top donor list (There is probably no data in the session_stats DB)\n\n')
                 top_don_con.close()
             
             return self.top_don_list
@@ -1613,7 +1717,7 @@ try:
                          
             except IndexError:
                 # Disabling this log line because it will log an error everytime the list is empty and the refresh button is pushed #
-                # logging.exception('\n\nException while filling the top donor list (There is probably no data in the session_stats DB, filling it with "None"):\n')
+                # logging.exception('\nException while filling the top donor list (There is probably no data in the session_stats DB, filling it with "None")\n\n')
                 self.top_don_list.append(['None', 'None'])
                 top_don_con.close()
 
@@ -1625,7 +1729,7 @@ try:
                 return self.top_don_list
 
             except:
-                logging.exception('\n\nException while filling the top donor list:\n')
+                logging.exception('\nException while filling the top donor list\n\n')
                 self.top_don_list.append(['None', 'None'])
                 top_don_con.close()
 
@@ -1667,7 +1771,7 @@ try:
                 lost_subs_con.commit()
                 lost_subs_con.close()   
             except:
-                logging.exception('\n\nException while reseting the lost donor list (There is probably no data in the session_stats DB):\n')
+                logging.exception('\nException while reseting the lost donor list (There is probably no data in the session_stats DB)\n\n')
                 lost_subs_con.close()
             
             return self.lost_subs_list.clear()
@@ -1757,7 +1861,7 @@ try:
                     self.lost_subs_list.append([item[0], str(item[1]), str(item[2])])
             
             except IndexError:
-                logging.exception('\n\nException while filling lost Subscribers list (There is probably no data in the lost subscribers DB, filling it with "Loading"):\n')
+                logging.exception('\nException while filling lost Subscribers list (There is probably no data in the lost subscribers DB, filling it with "Loading")\n\n')
                 self.lost_subs_list.append(['Loading', 'Loading', 'Loading'])
 
             lost_subs_con.close()
@@ -1790,4 +1894,4 @@ try:
     gtk.main()
 
 except:
-    logging.exception('\n\n Everything went horribly wrong :( \n\n')
+    logging.exception('\n Everything went horribly wrong :( \n\n')
